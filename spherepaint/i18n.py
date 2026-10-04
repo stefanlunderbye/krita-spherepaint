@@ -41,8 +41,10 @@ SV = {
     "Sphere view – {name}": "Sfärvy – {name}",
     "untitled": "namnlös",
     "No image is open.": "Ingen bild är öppen.",
-    "The view has changes that haven't been written back. Write them back first?":
-        "Vyn har ändringar som inte skrivits tillbaka. Skriva tillbaka dem först?",
+    "The view has changes that haven't been written back. Write them back first? "
+    "Otherwise they are discarded.":
+        "Vyn har ändringar som inte skrivits tillbaka. Skriva tillbaka dem först? "
+        "Annars kastas de.",
     "Select a regular paint layer in the equirectangular image.":
         "Välj ett vanligt målarlager (paint layer) i equirect-bilden.",
     "Colour depth {depth} is not supported.": "Färgdjupet {depth} stöds inte.",

@@ -235,6 +235,14 @@ class SphereDocker(DockWidget):
                     return
         app.activeWindow().addView(doc)
 
+    def _close_view(self, view_doc):
+        """Closes a replaced projection without a save prompt; unapplied changes were handled before."""
+        try:
+            view_doc.setModified(False)
+            view_doc.close()
+        except RuntimeError:  # already closed by the user
+            pass
+
     def _busy(self, text):
         self.status.setText(text)
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -264,11 +272,13 @@ class SphereDocker(DockWidget):
         if doc is None:
             self._fail(tr("No image is open."))
             return
-        if self._alive() and _doc_id(doc) == _doc_id(self.session.src_doc):
+        if self._alive():
+            # Asked for any panorama: the current view may be replaced and closed below.
             if self._has_unapplied_changes():
                 answer = QMessageBox.question(
                     self, TITLE,
-                    tr("The view has changes that haven't been written back. Write them back first?"),
+                    tr("The view has changes that haven't been written back. Write them back first? "
+                       "Otherwise they are discarded."),
                     QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
                 if answer == QMessageBox.Cancel:
                     return
@@ -306,8 +316,9 @@ class SphereDocker(DockWidget):
             reference = P.equirect_to_view(merged, view)
             del layer_px, merged
 
-            reuse = (self._alive() and _doc_id(doc) == _doc_id(self.session.src_doc)
-                     and self.session.view_doc.width() == size)
+            previous = self.session if self._alive() else None
+            same_source = previous is not None and _doc_id(doc) == _doc_id(previous.src_doc)
+            reuse = same_source and previous.view_doc.width() == size
             if reuse:
                 view_doc = self.session.view_doc
                 view_node = _find_paint_node(view_doc)
@@ -333,12 +344,14 @@ class SphereDocker(DockWidget):
             _write(view_node, projected, 0, 0)
             view_doc.refreshProjection()
 
-            same_layer = reuse and self.session.src_node.uniqueId() == node.uniqueId()
-            undo = self.session.undo if same_layer else []
+            same_layer = same_source and previous.src_node.uniqueId() == node.uniqueId()
+            undo = previous.undo if same_layer else []
             self.session = Session(doc, node, view_doc, view_node, view, dtype, channels, projected)
             self.session.undo = undo
             if not reuse:
                 app.activeWindow().addView(view_doc)
+                if previous is not None:
+                    self._close_view(previous.view_doc)  # keep a single projection open
             else:
                 self._show(view_doc)
             view_doc.setActiveNode(view_node)
