@@ -6,6 +6,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] – 2026-10-04
+
 ### Added
 - 360° preview as its own docker (*SpherePaint 360° Preview*) that floats as a movable, resizable window: drag to look around, scroll to zoom, release to project. The yellow frame shows exactly what the projection will cover.
 - The view direction (yaw, pitch, field of view) is stored in the panorama document and restored when switching back to it or reopening the .kra file.
@@ -44,7 +46,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - First release: docker with yaw, pitch and field of view, projection of the active layer into an undistorted perspective view, write-back of changed pixels only, flat/projection toggle, one-step undo, English and Swedish interface, plugin manual.
 
-[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stefanlunderbye/krita-spherepaint/releases/tag/v0.1.0
