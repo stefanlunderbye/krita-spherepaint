@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>SpherePaint Manual</title></head>
+<body>
+<h1>SpherePaint</h1>
+<p>Paint on 360° equirectangular images through undistorted perspective views.</p>
+<p>Painting directly on an equirectangular (2:1) image is awkward: straight lines bend and shapes stretch towards the top and bottom. SpherePaint shows an ordinary perspective view of any direction on the sphere, lets you paint there as usual, and writes the result back into the equirectangular image with the correct distortion.</p>
+
+<h2>Getting started</h2>
+<ol>
+<li>Show the panel with <strong>Settings → Dockers → SpherePaint</strong>.</li>
+<li>Open an equirectangular image (width twice the height) and select the paint layer you want to paint on.</li>
+<li>Set <strong>Yaw</strong> (left/right), <strong>Pitch</strong> (up/down) and <strong>Field of view</strong>, or use the quick buttons <em>Front, Right, Back, Left, Up, Down</em>.</li>
+<li>Press <strong>Project view</strong>. A new document called <em>Sphere view</em> opens.</li>
+<li>Paint in the layer <strong>Paint here</strong>. The locked layer below shows the whole image for reference.</li>
+<li>Press <strong>Write back to sphere</strong>. Only the pixels you changed are transferred; the rest of the image is untouched.</li>
+<li>Use <strong>Show flat</strong> and <strong>Show projection</strong> to switch between the two documents. Change the direction and press <strong>Project view</strong> again to work on another part of the sphere.</li>
+</ol>
+
+<h2>Tips</h2>
+<ul>
+<li><strong>View size</strong> set to <em>Auto</em> gives the view the same pixel density as the equirectangular image at its centre. Increase it manually for more detail.</li>
+<li>A field of view of 60–100° gives little distortion at the edges of the view. Use a narrower field of view near the poles.</li>
+<li>If you project a new direction while the view has changes that have not been written back, SpherePaint asks whether to write them back first.</li>
+<li>Krita's own <strong>Wrap Around Mode</strong> (W) is useful in the flat image for seamless strokes across the left/right edge.</li>
+</ul>
+
+<h2>Limitations</h2>
+<ul>
+<li>Write-back is not part of Krita's undo history. Use <strong>Undo last write-back</strong> in the panel (one step), or save before larger changes.</li>
+<li>Only the layer <strong>Paint here</strong> is written back. Paint on new layers in the view is not transferred.</li>
+<li>The source must be a regular paint layer. 8/16-bit integer and 16/32-bit float colour depths are supported.</li>
+<li>Semi-transparent edges may get a slight halo after resampling.</li>
+</ul>
+
+<h2>About</h2>
+<p>SpherePaint is open source under the MIT licence: <a href="https://github.com/stefanlunderbye/krita-spherepaint">github.com/stefanlunderbye/krita-spherepaint</a>. It is an independent project and is not affiliated with the Krita Foundation.</p>
+</body>
+</html>

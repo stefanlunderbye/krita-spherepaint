@@ -3,6 +3,7 @@ Type=Service
 ServiceTypes=Krita/PythonPlugin
 X-KDE-Library=spherepaint
 X-Python-2-Compatible=false
+X-Krita-Manual=Manual.html
 Name=SpherePaint
 Comment=Paint on an equirectangular (360°) image through undistorted perspective views
 Comment[sv]=Måla på en equirectangular-bild (360°) genom odistorterade perspektivvyer
