@@ -12,8 +12,8 @@ from .i18n import tr
 from .picker import DirectionPicker
 from .preview import PanoramaPreview
 from .qt import (
-    QApplication, QByteArray, QCheckBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLabel, QMessageBox, QPushButton, QSizeGrip, QSpinBox, Qt, QtCore, QToolButton, QVBoxLayout, QWidget,
+    QApplication, QByteArray, QDoubleSpinBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMenu,
+    QMessageBox, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QToolButton, QVBoxLayout, QWidget,
 )
 
 YES, NO, CANCEL = (QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No,
@@ -40,6 +40,13 @@ def docker_for_active_window():
         if main is not None and docker.parentWidget() is main:
             return docker
     return dockers[0] if dockers else None
+
+
+def _set_icon(button, name):
+    """Uses one of Krita's own icons when it exists, so the panel matches Krita's theme."""
+    icon = Krita.instance().icon(name)
+    if icon is not None and not icon.isNull():
+        button.setIcon(icon)
 
 
 def _alive_widgets(registry):
@@ -222,103 +229,135 @@ class SphereDocker(DockWidget):
 
         root = QWidget(self)
         layout = QVBoxLayout(root)
-        form = QFormLayout()
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
 
-        self.yaw = self._spin(-180, 180, 0, 15, " °", wrapping=True)
-        self.pitch = self._spin(-90, 90, 0, 15, " °")
-        self.fov = self._spin(20, 150, 90, 10, " °")
-        self.size = QSpinBox()
-        self.size.setRange(256, 8192)
-        self.size.setSingleStep(128)
-        self.size.setSuffix(" px")
-        self.auto_size = QCheckBox(tr("Auto (same density as the image)"))
-        self.auto_size.setChecked(True)
-        self.size.setEnabled(False)
-        self.auto_size.toggled.connect(lambda on: self.size.setEnabled(not on))
+        # Direction: thumbnail, then yaw / pitch / field of view on one row.
+        self.yaw = self._spin(-180, 180, 0, 15, "°", wrapping=True)
+        self.pitch = self._spin(-90, 90, 0, 15, "°")
+        self.fov = self._spin(20, 150, 90, 10, "°", decimals=0)
+        self.yaw.setToolTip(tr("Yaw – turn left and right"))
+        self.pitch.setToolTip(tr("Pitch – tilt up and down"))
+        self.fov.setToolTip(tr("Field of view"))
 
         self.picker = DirectionPicker()
         self.picker.setToolTip(tr("Click or drag to choose the direction; scroll to change the field of view"))
         self.picker.directionChanged.connect(self._on_picker_drag)
         self.picker.directionPicked.connect(self._on_picker_release)
-        self.picker.fovStep.connect(lambda steps: self.fov.setValue(self.fov.value() + 5 * steps))
-        self.project_on_release = QCheckBox(tr("Project when the mouse is released"))
-        self.project_on_release.setChecked(True)
+        self.picker.fovStep.connect(self._step_fov)
         for spin in (self.yaw, self.pitch, self.fov):
             spin.valueChanged.connect(self._sync_picker)
         layout.addWidget(self.picker)
 
-        self.btn_preview = QPushButton(tr("Open 360° preview"))
-        self.btn_preview.setToolTip(tr("Opens the 360° preview as a window you can move and resize"))
-        self.btn_preview.clicked.connect(self.open_preview)
-        layout.addWidget(self.btn_preview)
-        layout.addWidget(self.project_on_release)
-
-        form.addRow(tr("Yaw"), self.yaw)
-        form.addRow(tr("Pitch"), self.pitch)
-        form.addRow(tr("Field of view"), self.fov)
-        form.addRow(tr("View size"), self.size)
-        form.addRow("", self.auto_size)
-        layout.addLayout(form)
+        direction = QHBoxLayout()
+        direction.setSpacing(4)
+        for text, spin in (("Yaw", self.yaw), ("Pitch", self.pitch), ("FOV", self.fov)):
+            label = QLabel(text)  # standard abbreviations, kept untranslated; tooltips explain them
+            label.setToolTip(spin.toolTip())
+            direction.addWidget(label)
+            direction.addWidget(spin, 1)
+        layout.addLayout(direction)
 
         quick = QHBoxLayout()
+        quick.setSpacing(2)
         for label, yaw, pitch in (("Front", 0, 0), ("Right", 90, 0), ("Back", 180, 0),
                                   ("Left", -90, 0), ("Up", None, 90), ("Down", None, -90)):
-            b = QPushButton(tr(label))
-            b.setMinimumWidth(10)
+            b = QToolButton()
+            b.setText(tr(label))
+            b.setAutoRaise(True)
+            b.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             b.clicked.connect(lambda _=False, y=yaw, p=pitch: self._preset(y, p))
             quick.addWidget(b)
         layout.addLayout(quick)
 
-        self.btn_project = QPushButton(tr("Project view"))
+        # Main actions: large, side by side.
+        main = QHBoxLayout()
+        self.btn_project = QPushButton(tr("Project"))
         self.btn_project.setToolTip(tr("Creates/updates an undistorted perspective view of the active layer"))
         self.btn_project.clicked.connect(self.project)
-        self.btn_apply = QPushButton(tr("Write back to sphere"))
+        self.btn_apply = QPushButton(tr("Write back"))
         self.btn_apply.setToolTip(
             tr("Transfers what changed in the layer '{layer}' to the equirectangular image", layer=PAINT_LAYER))
         self.btn_apply.clicked.connect(self.apply)
-        self.btn_undo = QPushButton(tr("Undo last write-back"))
+        for button, icon in ((self.btn_project, "view-refresh"), (self.btn_apply, "document-save")):
+            button.setMinimumHeight(32)
+            _set_icon(button, icon)
+            main.addWidget(button)
+        layout.addLayout(main)
+
+        # Secondary actions and the menu with everything used less often.
+        secondary = QHBoxLayout()
+        self.btn_undo = QToolButton()
+        self.btn_undo.setText(tr("Undo"))
+        self.btn_undo.setToolTip(tr("Undo last write-back"))
+        self.btn_undo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        _set_icon(self.btn_undo, "edit-undo")
         self.btn_undo.clicked.connect(self.undo_apply)
-        layout.addWidget(self.btn_project)
-        layout.addWidget(self.btn_apply)
-        layout.addWidget(self.btn_undo)
-
-        toggle = QHBoxLayout()
-        self.btn_flat = QPushButton(tr("Show flat"))
-        self.btn_flat.clicked.connect(lambda: self._show(self.session and self.session.src_doc))
-        self.btn_proj = QPushButton(tr("Show projection"))
-        self.btn_proj.clicked.connect(lambda: self._show(self.session and self.session.view_doc))
-        toggle.addWidget(self.btn_flat)
-        toggle.addWidget(self.btn_proj)
-        layout.addLayout(toggle)
-
-        self.btn_guide = QPushButton(tr("Add guide layer"))
-        self.btn_guide.setToolTip(tr("Adds a layer with a labelled grid (front, right, back, left, top, bottom)"))
-        self.btn_guide.clicked.connect(self.add_guide)
-        layout.addWidget(self.btn_guide)
-
-        cube = QHBoxLayout()
-        self.btn_export_cube = QPushButton(tr("Export cube map…"))
-        self.btn_export_cube.setToolTip(tr("Saves the panorama as six cube faces (front, right, back, left, top, bottom)"))
-        self.btn_export_cube.clicked.connect(self.export_cube)
-        self.btn_import_cube = QPushButton(tr("Import cube map…"))
-        self.btn_import_cube.setToolTip(tr("Builds a panorama from six cube faces; choose the *_front image"))
-        self.btn_import_cube.clicked.connect(self.import_cube)
-        cube.addWidget(self.btn_export_cube)
-        cube.addWidget(self.btn_import_cube)
-        layout.addLayout(cube)
-
-        self.btn_export_360 = QPushButton(tr("Export for 360° viewers…"))
-        self.btn_export_360.setToolTip(tr("Saves a JPEG with 360° metadata (GPano), recognised by Facebook, "
-                                          "Google Photos, Kuula and other viewers"))
-        self.btn_export_360.clicked.connect(self.export_360)
-        layout.addWidget(self.btn_export_360)
+        self.btn_toggle = QToolButton()
+        self.btn_toggle.setText(tr("Flat / Projection"))
+        self.btn_toggle.setToolTip(tr("Switches between the flat image and the projection"))
+        self.btn_toggle.clicked.connect(self.toggle_view)
+        for button in (self.btn_undo, self.btn_toggle):
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            secondary.addWidget(button)
+        self.btn_more = QToolButton()
+        self.btn_more.setText("⋯")
+        self.btn_more.setToolTip(tr("More: preview, guide layer, cube maps, export and settings"))
+        self.btn_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.btn_more.setMinimumWidth(36)
+        _set_icon(self.btn_more, "application-menu")
+        self.btn_more.setMenu(self._build_menu())
+        secondary.addWidget(self.btn_more)
+        layout.addLayout(secondary)
 
         self.status = QLabel(tr("Open an equirectangular image (2:1) and select the layer you want to paint on."))
         self.status.setWordWrap(True)
+        font = self.status.font()
+        font.setPointSizeF(max(7.0, font.pointSizeF() * 0.9))
+        self.status.setFont(font)
+        self.status.setEnabled(False)  # drawn greyed out, as secondary information
         layout.addWidget(self.status)
         layout.addStretch(1)
         self.setWidget(root)
         self._update_buttons()
+
+    def _build_menu(self):
+        menu = QMenu(self)
+        self.act_preview = menu.addAction(tr("Open 360° preview"), self.open_preview)
+        self.act_preview.setToolTip(tr("Opens the 360° preview as a window you can move and resize"))
+        self.act_guide = menu.addAction(tr("Add guide layer"), self.add_guide)
+        self.act_guide.setToolTip(tr("Adds a layer with a labelled grid (front, right, back, left, top, bottom)"))
+        cube = menu.addMenu(tr("Cube map"))
+        cube.setToolTipsVisible(True)
+        self.act_export_cube = cube.addAction(tr("Export cube map…"), self.export_cube)
+        self.act_export_cube.setToolTip(tr("Saves the panorama as six cube faces (front, right, back, left, top, bottom)"))
+        self.act_import_cube = cube.addAction(tr("Import cube map…"), self.import_cube)
+        self.act_import_cube.setToolTip(tr("Builds a panorama from six cube faces; choose the *_front image"))
+        self.act_export_360 = menu.addAction(tr("Export for 360° viewers…"), self.export_360)
+        self.act_export_360.setToolTip(tr("Saves a JPEG with 360° metadata (GPano), recognised by Facebook, "
+                                          "Google Photos, Kuula and other viewers"))
+        menu.addSeparator()
+        self.project_on_release = menu.addAction(tr("Project when the mouse is released"))
+        self.project_on_release.setCheckable(True)
+        self.project_on_release.setChecked(True)
+        self.auto_size = menu.addAction(tr("Automatic view size (same density as the image)"))
+        self.auto_size.setCheckable(True)
+        self.auto_size.setChecked(True)
+        self.act_view_size = menu.addAction(tr("View size…"), self._ask_view_size)
+        self.act_view_size.setEnabled(False)
+        self.auto_size.toggled.connect(lambda on: self.act_view_size.setEnabled(not on))
+        menu.setToolTipsVisible(True)
+        # Kept as a value holder for the custom view size (not shown in the panel).
+        self.view_size = QSpinBox(self)
+        self.view_size.setRange(256, 8192)
+        self.view_size.setValue(1024)
+        self.view_size.hide()
+        return menu
+
+    def _ask_view_size(self):
+        value, ok = QInputDialog.getInt(self, TITLE, tr("View size in pixels:"), self.view_size.value(), 256, 8192, 128)
+        if ok:
+            self.view_size.setValue(value)
 
     def canvasChanged(self, canvas):
         self._update_buttons()
@@ -419,10 +458,10 @@ class SphereDocker(DockWidget):
 
     # --- helpers ------------------------------------------------------------
 
-    def _spin(self, lo, hi, value, step, suffix, wrapping=False):
+    def _spin(self, lo, hi, value, step, suffix, wrapping=False, decimals=1):
         s = QDoubleSpinBox()
         s.setRange(lo, hi)
-        s.setDecimals(1)
+        s.setDecimals(decimals)
         s.setSingleStep(step)
         s.setValue(value)
         s.setSuffix(suffix)
@@ -450,8 +489,7 @@ class SphereDocker(DockWidget):
     def _update_buttons(self):
         alive = self._alive()
         self.btn_apply.setEnabled(alive)
-        self.btn_flat.setEnabled(alive)
-        self.btn_proj.setEnabled(alive)
+        self.btn_toggle.setEnabled(alive)
         self.btn_undo.setEnabled(alive and bool(self.session.undo))
 
     def _show(self, doc):
@@ -563,9 +601,9 @@ class SphereDocker(DockWidget):
                 return
 
         fov = self.fov.value()
-        size = P.matching_view_size(w, fov) if self.auto_size.isChecked() else self.size.value()
+        size = P.matching_view_size(w, fov) if self.auto_size.isChecked() else self.view_size.value()
         if self.auto_size.isChecked():
-            self.size.setValue(size)
+            self.view_size.setValue(size)
         view = P.View(self.yaw.value(), self.pitch.value(), fov, size)
         channels = len(node.channels())
 

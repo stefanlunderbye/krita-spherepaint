@@ -34,7 +34,10 @@ QPainter = QtGui.QPainter
 QPainterPath = QtGui.QPainterPath
 QPen = QtGui.QPen
 
+QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction  # moved to QtGui in Qt 6
 QApplication = QtWidgets.QApplication
+QInputDialog = QtWidgets.QInputDialog
+QMenu = QtWidgets.QMenu
 QCheckBox = QtWidgets.QCheckBox
 QDoubleSpinBox = QtWidgets.QDoubleSpinBox
 QFileDialog = QtWidgets.QFileDialog

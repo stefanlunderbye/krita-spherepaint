@@ -12,33 +12,33 @@
 <li>Show the panel with <strong>Settings → Dockers → SpherePaint</strong>.</li>
 <li>Open an equirectangular image (width twice the height) and select the paint layer you want to paint on.</li>
 <li>Choose a direction: click or drag in the panorama thumbnail at the top of the panel (scroll to change the field of view), type <strong>Yaw</strong>, <strong>Pitch</strong> and <strong>Field of view</strong>, or use the quick buttons <em>Front, Right, Back, Left, Up, Down</em>. The yellow outline shows the area the view will cover.</li>
-<li>Press <strong>Project view</strong> – or just release the mouse in the thumbnail when <em>Project when the mouse is released</em> is ticked. A new document called <em>Sphere view</em> opens.</li>
+<li>Press <strong>Project</strong> – or just release the mouse in the thumbnail (<em>Project when the mouse is released</em> in the <strong>⋯</strong> menu is on by default). A new document called <em>Sphere view</em> opens.</li>
 <li>Paint in the layer <strong>Paint here</strong>. The locked layer below shows the whole image for reference.</li>
-<li>Press <strong>Write back to sphere</strong>. Only the pixels you changed are transferred; the rest of the image is untouched.</li>
-<li>Use <strong>Show flat</strong> and <strong>Show projection</strong> to switch between the two documents. Change the direction and press <strong>Project view</strong> again to work on another part of the sphere.</li>
+<li>Press <strong>Write back</strong>. Only the pixels you changed are transferred; the rest of the image is untouched.</li>
+<li>Use <strong>Flat / Projection</strong> to switch between the two documents. Change the direction and press <strong>Project</strong> again to work on another part of the sphere.</li>
 </ol>
 
 <h2>360° preview</h2>
-<p><strong>Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked).</p>
-<p>The area inside the yellow frame is exactly what <strong>Project view</strong> will show; in a non-square window the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
+<p><strong>⋯ → Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked in the <strong>⋯</strong> menu).</p>
+<p>The area inside the yellow frame is exactly what <strong>Project</strong> will show; in a non-square window the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
 
 <h2>Remembered direction</h2>
 <p>Every projection stores its yaw, pitch and field of view in the panorama document. When you switch back to that panorama, or open the saved <em>.kra</em> file later, the panel restores them, so you continue where you left off.</p>
 
 <h2>Several layers</h2>
 <p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
-<p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project view</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>
+<p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>
 
 <h2>Sharing as a 360° image</h2>
-<p><strong>Export for 360° viewers…</strong> saves the panorama (all visible layers) as a JPEG and adds Google Photo Sphere (GPano) metadata. Facebook, Google Photos, Kuula and most 360° viewers use it to show the image as an interactive panorama instead of a flat picture. Hide the guide layer before exporting if you don't want it in the image.</p>
+<p><strong>⋯ → Export for 360° viewers…</strong> saves the panorama (all visible layers) as a JPEG and adds Google Photo Sphere (GPano) metadata. Facebook, Google Photos, Kuula and most 360° viewers use it to show the image as an interactive panorama instead of a flat picture. Hide the guide layer before exporting if you don't want it in the image.</p>
 
 <h2>Cube maps</h2>
-<p><strong>Export cube map…</strong> saves the panorama (all visible layers) as six square images in a folder of your choice: <em>name_front, _right, _back, _left, _top, _bottom</em>, as PNG for 8/16-bit images and EXR for floating point. The face size matches the panorama's pixel density.</p>
-<p><strong>Import cube map…</strong> asks for the <em>_front</em> image, finds the five others next to it, and creates a new panorama from them. All faces must be square, the same size and the same colour depth.</p>
+<p><strong>⋯ → Cube map → Export cube map…</strong> saves the panorama (all visible layers) as six square images in a folder of your choice: <em>name_front, _right, _back, _left, _top, _bottom</em>, as PNG for 8/16-bit images and EXR for floating point. The face size matches the panorama's pixel density.</p>
+<p><strong>⋯ → Cube map → Import cube map…</strong> asks for the <em>_front</em> image, finds the five others next to it, and creates a new panorama from them. All faces must be square, the same size and the same colour depth.</p>
 <p>Faces are oriented as seen from the centre of the sphere: front, right, back and left are upright; the top of the <em>top</em> image points towards the back and the top of the <em>bottom</em> image towards the front. Game engines use different conventions, so some faces may need rotating or mirroring for a specific engine.</p>
 
 <h2>Guide layer</h2>
-<p><strong>Add guide layer</strong> adds a semi-transparent layer on top of the equirectangular image showing the six cube faces – <em>FRONT, RIGHT, BACK, LEFT, TOP, BOTTOM</em> – with their edges, a 4×4 grid and a centre cross, all correctly distorted. It helps you find your way around the sphere and is visible in the reference layer of projected views. Hide or delete it like any other layer. It needs an RGBA image with 8 or 16 bits per channel.</p>
+<p><strong>⋯ → Add guide layer</strong> adds a semi-transparent layer on top of the equirectangular image showing the six cube faces – <em>FRONT, RIGHT, BACK, LEFT, TOP, BOTTOM</em> – with their edges, a 4×4 grid and a centre cross, all correctly distorted. It helps you find your way around the sphere and is visible in the reference layer of projected views. Hide or delete it like any other layer. It needs an RGBA image with 8 or 16 bits per channel.</p>
 
 <h2>Keyboard shortcuts</h2>
 <p>The main commands are Krita actions, listed under <strong>Tools → Scripts</strong>: <em>Project view</em>, <em>Write back to sphere</em>, <em>Toggle flat / projection</em>, <em>Undo last write-back</em> and <em>Add guide layer</em>. Assign keys to them in <strong>Settings → Configure Krita → Keyboard Shortcuts</strong> (search for “SpherePaint”). They need the SpherePaint docker to be enabled.</p>
@@ -46,7 +46,7 @@
 
 <h2>Tips</h2>
 <ul>
-<li><strong>View size</strong> set to <em>Auto</em> gives the view the same pixel density as the equirectangular image at its centre. Increase it manually for more detail.</li>
+<li><em>Automatic view size</em> (in the <strong>⋯</strong> menu, on by default) gives the view the same pixel density as the equirectangular image at its centre. Turn it off and use <em>View size…</em> for more detail.</li>
 <li>A field of view of 60–100° gives little distortion at the edges of the view. Use a narrower field of view near the poles.</li>
 <li>Only one <em>Sphere view</em> is kept open. Projecting again updates it, or replaces it (closing the old one) when the view size or the panorama changes.</li>
 <li>If you project a new direction while the view has changes that have not been written back, SpherePaint asks whether to write them back first; otherwise they are discarded.</li>
@@ -55,7 +55,7 @@
 
 <h2>Limitations</h2>
 <ul>
-<li>Write-back is not part of Krita's undo history. Use <strong>Undo last write-back</strong> in the panel (one step), or save before larger changes.</li>
+<li>Write-back is not part of Krita's undo history. Use <strong>Undo</strong> in the panel (one step), or save before larger changes.</li>
 <li>Hidden layers in the view are not written back – use them for sketches.</li>
 <li>The source must be a regular paint layer. 8/16-bit integer and 16/32-bit float colour depths are supported.</li>
 </ul>

@@ -44,6 +44,9 @@ def plugin():
         def addExtension(self, extension):
             pass
 
+        def icon(self, name):
+            return qt.QtGui.QIcon()
+
     class FakeExtension:
         def __init__(self, *args):
             pass
@@ -130,8 +133,12 @@ def test_preview_renders_and_drag_turns_the_view(plugin):
 
 def test_docker_builds(plugin):
     docker = plugin.pkg.docker.SphereDocker()
-    assert docker.btn_project.text()
-    assert docker.btn_export_cube.text()
+    assert docker.btn_project.text() and docker.btn_apply.text()
+    assert docker.act_export_cube.text() and docker.act_export_360.text()
+    assert docker.project_on_release.isChecked() and docker.auto_size.isChecked()
+    assert not docker.act_view_size.isEnabled()
+    docker.auto_size.setChecked(False)
+    assert docker.act_view_size.isEnabled()
 
 
 def test_preview_docker_follows_the_docker_in_the_same_window(plugin):

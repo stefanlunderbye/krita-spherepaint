@@ -6,6 +6,9 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Redesigned docker: yaw, pitch and field of view on one row under the thumbnail, compact direction buttons, large *Project* and *Write back* buttons side by side, *Undo* and *Flat / Projection* below, and less frequent tools (360° preview, guide layer, cube maps, 360° export, view size settings) in a **⋯** menu. Uses Krita's own icons where available.
+
 ## [0.4.0] – 2026-10-04
 
 ### Added

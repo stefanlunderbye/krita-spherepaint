@@ -11,11 +11,20 @@ import os
 from .qt import QLocale, QStandardPaths
 
 SV = {
-    "Yaw": "Girvinkel (yaw)",
-    "Pitch": "Lutning (pitch)",
+    "Project": "Projicera",
+    "Write back": "Skriv tillbaka",
+    "Undo": "Ångra",
+    "Flat / Projection": "Platt / Projektion",
+    "Switches between the flat image and the projection": "Växlar mellan den platta bilden och projektionen",
+    "More: preview, guide layer, cube maps, export and settings":
+        "Mer: förhandsvisning, hjälplager, kubkartor, export och inställningar",
+    "Yaw – turn left and right": "Yaw – vrid åt vänster och höger",
+    "Pitch – tilt up and down": "Pitch – luta uppåt och nedåt",
+    "Cube map": "Kubkarta",
+    "Automatic view size (same density as the image)": "Automatisk vystorlek (samma täthet som bilden)",
+    "View size…": "Vystorlek…",
+    "View size in pixels:": "Vystorlek i pixlar:",
     "Field of view": "Synfält (FOV)",
-    "View size": "Vystorlek",
-    "Auto (same density as the image)": "Auto (samma täthet som bilden)",
     "Click or drag to choose the direction; scroll to change the field of view":
         "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
     "Project when the mouse is released": "Projicera när musknappen släpps",
@@ -90,15 +99,11 @@ SV = {
     "Left": "Vänster",
     "Up": "Upp",
     "Down": "Ner",
-    "Project view": "Projicera vy",
     "Creates/updates an undistorted perspective view of the active layer":
         "Skapar/uppdaterar en odistorterad perspektivvy av det aktiva lagret",
-    "Write back to sphere": "Skriv tillbaka till sfären",
     "Transfers what changed in the layer '{layer}' to the equirectangular image":
         "För över det som ändrats i lagret '{layer}' till equirect-bilden",
     "Undo last write-back": "Ångra senaste tillbakaskrivning",
-    "Show flat": "Visa platt",
-    "Show projection": "Visa projektion",
     "Open an equirectangular image (2:1) and select the layer you want to paint on.":
         "Öppna en equirect-bild (2:1) och välj lagret du vill måla på.",
     "Paint here": "Måla här",
