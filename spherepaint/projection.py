@@ -1,19 +1,19 @@
-"""Omprojektion mellan equirectangular (2:1) och en gnomonisk perspektivvy.
+"""Reprojection between equirectangular (2:1) and a gnomonic perspective view.
 
-Koordinatsystem: x höger, y upp, z framåt. Longitud 0 = bildens mitt,
-latitud +90° = bildens överkant. Ren numpy, inget Krita-beroende, så
-modulen går att testa fristående.
+Coordinate system: x right, y up, z forward. Longitude 0 = centre of the
+image, latitude +90° = top edge of the image. Pure NumPy with no Krita
+dependency, so the module can be tested on its own.
 """
 import math
 
 import numpy as np
 
-# Antal rader som bearbetas åt gången, så att minnet hålls nere även för 8K+.
+# Rows processed at a time, to keep memory use down even for 8K+ images.
 CHUNK_ROWS = 256
 
 
 class View:
-    """En kamera i sfärens mitt: girvinkel, lutning och synfält i grader."""
+    """A camera at the centre of the sphere: yaw, pitch and field of view in degrees."""
 
     def __init__(self, yaw_deg, pitch_deg, fov_deg, size):
         self.yaw = math.radians(yaw_deg)
@@ -38,13 +38,13 @@ class View:
 
 
 def matching_view_size(equirect_width, fov_deg):
-    """Vystorlek som ger samma pixeltäthet i vyns mitt som i equirect-bilden."""
+    """View size that gives the same pixel density at the view's centre as the equirectangular image."""
     n = 2.0 * math.tan(math.radians(fov_deg) / 2.0) * equirect_width / (2.0 * math.pi)
     return int(min(8192, max(256, round(n))))
 
 
 def _sample(img, sx, sy, wrap_x):
-    """Bilinjär sampling av img (H, W, C) i flyttalskoordinater; ger float32."""
+    """Bilinear sampling of img (H, W, C) at floating-point coordinates; returns float32."""
     h, w = img.shape[:2]
     x0 = np.floor(sx).astype(np.int64)
     y0 = np.floor(sy).astype(np.int64)
@@ -73,7 +73,7 @@ def _to_dtype(values, dtype):
 
 
 def equirect_to_view(equirect, view):
-    """Räknar fram perspektivvyn (size, size, C) ur en equirect-bild (H, W, C)."""
+    """Computes the perspective view (size, size, C) from an equirectangular image (H, W, C)."""
     h, w, c = equirect.shape
     n = view.size
     out = np.empty((n, n, c), dtype=equirect.dtype)
@@ -94,11 +94,11 @@ def equirect_to_view(equirect, view):
 
 
 def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
-    """Projicerar tillbaka vyn för equirect-raderna r0..r1.
+    """Projects the view back onto equirectangular rows r0..r1.
 
-    Ger (vikt, färg) för raderna, där vikt (rows, width) är 0 där vyn inte
-    ändrat något och färg (rows, width, C) är float32. None om inget i
-    raderna berörs, så att anroparen kan hoppa över dem.
+    Returns (weight, colour) for the rows, where weight (rows, width) is 0
+    wherever the view changed nothing and colour (rows, width, C) is float32.
+    Returns None if the rows are not affected at all, so the caller can skip them.
     """
     n = view.size
     x = (np.arange(width, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
@@ -126,5 +126,5 @@ def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
 
 
 def change_mask(before, after):
-    """1.0 där någon kanal skiljer sig mellan två lika stora bilder, annars 0."""
+    """1.0 where any channel differs between two same-sized images, otherwise 0."""
     return np.any(before != after, axis=2).astype(np.float32)

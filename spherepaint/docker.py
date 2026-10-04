@@ -1,4 +1,4 @@
-"""Dockpanel: växlar mellan equirect-bilden (platt) och en perspektivvy."""
+"""Docker panel: switches between the equirectangular image (flat) and a perspective view."""
 import numpy as np
 from krita import DockWidget, Krita
 from PyQt5.QtCore import QByteArray, Qt
@@ -11,7 +11,7 @@ from . import projection as P
 from .i18n import tr
 
 DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32}
-TITLE = "SpherePaint"  # produktnamn, översätts inte
+TITLE = "SpherePaint"  # product name, not translated
 PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
 
@@ -27,18 +27,18 @@ def _write(node, arr, x, y):
 
 
 def _doc_id(doc):
-    """Stabil identitet för ett dokument; None om det saknas eller har stängts."""
+    """Stable identity for a document; None if it is missing or has been closed."""
     if doc is None:
         return None
     try:
         root = doc.rootNode()
-    except RuntimeError:  # Qt-objektet bakom är redan borttaget
+    except RuntimeError:  # the underlying Qt object has already been deleted
         return None
     return root.uniqueId() if root is not None else None
 
 
 class Session:
-    """En pågående projektion: källbilden, vyn och vad vyn såg ut som från början."""
+    """An ongoing projection: the source image, the view, and what the view looked like originally."""
 
     def __init__(self, src_doc, src_node, view_doc, view_node, view, dtype, channels, baseline):
         self.src_doc = src_doc
@@ -49,7 +49,7 @@ class Session:
         self.dtype = dtype
         self.channels = channels
         self.baseline = baseline
-        self.undo = []  # [(y, x, gamla pixlar)] från senaste tillbakaskrivningen
+        self.undo = []  # [(y, x, old pixels)] from the last write-back
 
 
 class SphereDocker(DockWidget):
@@ -122,7 +122,7 @@ class SphereDocker(DockWidget):
     def canvasChanged(self, canvas):
         self._update_buttons()
 
-    # --- hjälpare -----------------------------------------------------------
+    # --- helpers ------------------------------------------------------------
 
     def _spin(self, lo, hi, value, step, suffix, wrapping=False):
         s = QDoubleSpinBox()
@@ -149,7 +149,7 @@ class SphereDocker(DockWidget):
         ids = self._open_ids() - {None}
         alive = _doc_id(s.src_doc) in ids and _doc_id(s.view_doc) in ids
         if not alive:
-            self.session = None  # något av dokumenten är stängt; börja om vid nästa projektion
+            self.session = None  # a document was closed; start over on the next projection
         return alive
 
     def _update_buttons(self):
@@ -188,14 +188,14 @@ class SphereDocker(DockWidget):
         QMessageBox.warning(self, TITLE, text)
         self._update_buttons()
 
-    # --- projicera ----------------------------------------------------------
+    # --- project ------------------------------------------------------------
 
     def project(self):
         app = Krita.instance()
         doc = app.activeDocument()
         node = doc.activeNode() if doc else None
         if self._alive() and _doc_id(doc) == _doc_id(self.session.view_doc):
-            # Står man i vyn gäller det samma källbild och samma lager.
+            # When the view is active, keep the same source image and layer.
             doc, node = self.session.src_doc, self.session.src_node
         if doc is None:
             self._fail(tr("No image is open."))
@@ -275,14 +275,14 @@ class SphereDocker(DockWidget):
             else:
                 self._show(view_doc)
             view_doc.setActiveNode(view_node)
-        except Exception as e:  # visa felet i panelen i stället för att krascha Krita
+        except Exception as e:  # show the error in the panel instead of crashing Krita
             self._fail(tr("Projection failed: {error}", error=e))
             return
         self._done(tr("View {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
                       "Paint in the layer '{layer}', then press 'Write back'.",
                       size=size, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov, layer=PAINT_LAYER))
 
-    # --- skriv tillbaka -----------------------------------------------------
+    # --- write back ---------------------------------------------------------
 
     def _current_view_pixels(self):
         s = self.session
@@ -340,7 +340,7 @@ class SphereDocker(DockWidget):
             _write(s.src_node, old, c0, r0)
         s.src_doc.refreshProjection()
         s.undo = []
-        # Vyn innehåller fortfarande det ritade, så nästa jämförelse ska ske mot läget före.
+        # The view still contains the painting, so the next comparison must be against the state before it.
         s.baseline = P.equirect_to_view(
             _read(s.src_node, 0, 0, s.src_doc.width(), s.src_doc.height(), s.channels, s.dtype), s.view)
         self._done(tr("The last write-back has been undone in the equirectangular image. "

@@ -1,7 +1,7 @@
 import os
 import sys
 
-# numpy ingår inte i Kritas Python, så pluginet har en egen kopia.
+# NumPy is not part of Krita's Python, so the plugin bundles its own copy.
 _vendor = os.path.join(os.path.dirname(__file__), "_vendor")
 if _vendor not in sys.path:
     sys.path.insert(0, _vendor)

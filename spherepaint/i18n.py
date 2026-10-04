@@ -1,9 +1,9 @@
-"""Översättning av pluginets texter efter Kritas gränssnittsspråk.
+"""Translates the plugin's texts to match Krita's interface language.
 
-Grundtexterna är engelska. Krita översätter bara sina egna strängar, så
-pluginet tar reda på språket på samma sätt som Krita: först ett språk valt
-under Settings → Switch Application Language (klanguageoverridesrc), annars
-systemets språk.
+The source strings are English. Krita only translates its own strings, so the
+plugin determines the language the same way Krita does: first a language
+chosen under Settings → Switch Application Language (klanguageoverridesrc),
+otherwise the system language.
 """
 import configparser
 import os
@@ -68,7 +68,7 @@ CATALOGS = {"sv": SV}
 
 
 def _override_language():
-    """Språket valt i Krita (Settings → Switch Application Language), om något."""
+    """The language chosen in Krita (Settings → Switch Application Language), if any."""
     base = QStandardPaths.writableLocation(QStandardPaths.GenericConfigLocation)
     path = os.path.join(base, "klanguageoverridesrc")
     if not os.path.isfile(path):
@@ -95,6 +95,6 @@ _catalog = CATALOGS.get(LANGUAGE, {})
 
 
 def tr(text, **values):
-    """Översätter text till Kritas språk och fyller i {platshållare}."""
+    """Translates text into Krita's language and fills in {placeholders}."""
     translated = _catalog.get(text, text)
     return translated.format(**values) if values else translated
