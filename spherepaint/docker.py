@@ -1,4 +1,5 @@
 """Docker panel: switches between the equirectangular image (flat) and a perspective view."""
+import json
 import os
 import weakref
 
@@ -9,9 +10,10 @@ from . import guide, xmp
 from . import projection as P
 from .i18n import tr
 from .picker import DirectionPicker
+from .preview import PanoramaPreview
 from .qt import (
     QApplication, QByteArray, QCheckBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLabel, QMessageBox, QPushButton, QSpinBox, Qt, QToolButton, QVBoxLayout, QWidget,
+    QLabel, QMessageBox, QPushButton, QSizeGrip, QSpinBox, Qt, QtCore, QToolButton, QVBoxLayout, QWidget,
 )
 
 YES, NO, CANCEL = (QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No,
@@ -19,22 +21,43 @@ YES, NO, CANCEL = (QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
 
 DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32}
 TITLE = "SpherePaint"  # product name, not translated
+PREVIEW_SOURCE_WIDTH = 2048  # downscaled panorama used by the thumbnail and the 360° preview
+ANNOTATION = "spherepaint"  # document annotation holding the last view direction
 PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
 
 
-_DOCKERS = weakref.WeakSet()  # one docker per Krita window
+_DOCKERS = weakref.WeakSet()  # one SpherePaint docker per Krita window
+_PREVIEWS = weakref.WeakSet()  # one 360° preview docker per Krita window (floating docks keep their parent)
 
 
 def docker_for_active_window():
     """The SpherePaint docker of the active Krita window (used by the shortcut actions)."""
-    dockers = list(_DOCKERS)
+    dockers = _alive_widgets(_DOCKERS)
     window = Krita.instance().activeWindow()
     main = window.qwindow() if window else None
     for docker in dockers:
         if main is not None and docker.parentWidget() is main:
             return docker
     return dockers[0] if dockers else None
+
+
+def _alive_widgets(registry):
+    """Members of a docker registry whose Qt object still exists."""
+    alive = []
+    for widget in list(registry):
+        try:
+            widget.objectName()
+        except RuntimeError:  # the C++ object behind the wrapper is gone
+            registry.discard(widget)
+            continue
+        alive.append(widget)
+    return alive
+
+
+def _same_window(registry, widget):
+    """Members of ``registry`` that live in the same Krita window as ``widget``."""
+    return [w for w in _alive_widgets(registry) if w.parentWidget() is widget.parentWidget()]
 
 
 COMMIT_TOOL = "KritaShape/KisToolBrush"
@@ -136,11 +159,65 @@ class Session:
         self.undo = None  # state needed to undo the last write-back (see apply)
 
 
+class PreviewDocker(DockWidget):
+    """The 360° preview as its own docker, so it can float as a movable, resizable window.
+
+    It holds no state: the SpherePaint docker in the same window feeds it and
+    receives its mouse input.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(tr("SpherePaint 360° Preview"))
+        self.view = PanoramaPreview(self)
+        self.view.setToolTip(tr("360° preview of the projection: drag to look around, scroll to zoom"))
+        self.view.directionChanged.connect(lambda yaw, pitch: self._main("_on_picker_drag", yaw, pitch))
+        self.view.directionPicked.connect(lambda yaw, pitch: self._main("_on_picker_release", yaw, pitch))
+        self.view.fovStep.connect(lambda steps: self._main("_step_fov", steps))
+        self.setWidget(self.view)
+        # The floating window's own border is thin; a corner grip is easier to grab. It
+        # resizes the top-level window, so it is only shown while the docker floats.
+        self.grip = QSizeGrip(self.view)
+        self.grip.setFixedSize(22, 22)
+        self.grip.setStyleSheet("background: rgba(0, 0, 0, 110); border-top-left-radius: 5px;")
+        self.grip.setToolTip(tr("Drag to resize the preview window"))
+        self.topLevelChanged.connect(lambda _floating: self._place_grip())
+        self.view.installEventFilter(self)
+        _PREVIEWS.add(self)
+
+    def _place_grip(self):
+        # A dock that is not yet in a main window also counts as floating, so check the parent too.
+        floating = self.isFloating() and self.parentWidget() is not None
+        self.grip.setVisible(floating)
+        self.grip.move(self.view.width() - self.grip.width(), self.view.height() - self.grip.height())
+
+    def eventFilter(self, watched, event):
+        if watched is self.view and event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Show):
+            self._place_grip()
+        return False
+
+    def _main(self, method, *args):
+        dockers = _same_window(_DOCKERS, self)
+        if dockers:
+            getattr(dockers[0], method)(*args)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        dockers = _same_window(_DOCKERS, self)
+        if dockers:
+            dockers[0].push_to_preview(self)
+
+    def canvasChanged(self, canvas):
+        pass  # the SpherePaint docker refreshes the preview
+
+
 class SphereDocker(DockWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(TITLE)
         self.session = None
+        self._last_source_id = None  # panorama whose stored direction was last restored
+        self._preview_image = None  # downscaled panorama shared with the 360° preview docker
         _DOCKERS.add(self)
 
         root = QWidget(self)
@@ -169,6 +246,11 @@ class SphereDocker(DockWidget):
         for spin in (self.yaw, self.pitch, self.fov):
             spin.valueChanged.connect(self._sync_picker)
         layout.addWidget(self.picker)
+
+        self.btn_preview = QPushButton(tr("Open 360° preview"))
+        self.btn_preview.setToolTip(tr("Opens the 360° preview as a window you can move and resize"))
+        self.btn_preview.clicked.connect(self.open_preview)
+        layout.addWidget(self.btn_preview)
         layout.addWidget(self.project_on_release)
 
         form.addRow(tr("Yaw"), self.yaw)
@@ -240,12 +322,46 @@ class SphereDocker(DockWidget):
 
     def canvasChanged(self, canvas):
         self._update_buttons()
+        self._restore_direction()
         self._refresh_thumbnail()
+
+    # --- remembered direction -------------------------------------------------
+
+    def _save_direction(self, doc):
+        """Stores yaw, pitch and field of view in the document (kept in .kra files)."""
+        data = {"yaw": self.yaw.value(), "pitch": self.pitch.value(), "fov": self.fov.value()}
+        try:
+            doc.setAnnotation(ANNOTATION, "SpherePaint view direction", QByteArray(json.dumps(data).encode()))
+        except (AttributeError, RuntimeError):  # older Krita without annotations, or closed document
+            pass
+
+    def _restore_direction(self):
+        """Restores the direction stored in a panorama when switching to it from another panorama."""
+        doc = Krita.instance().activeDocument()
+        if doc is None or (self._alive() and _doc_id(doc) == _doc_id(self.session.view_doc)):
+            return  # the projection view itself keeps the current values
+        doc_id = _doc_id(doc)
+        if doc_id == self._last_source_id:
+            return
+        self._last_source_id = doc_id
+        try:
+            data = json.loads(bytes(doc.annotation(ANNOTATION)) or b"null")
+        except (AttributeError, RuntimeError, ValueError):
+            return
+        if isinstance(data, dict):
+            for spin, key in ((self.yaw, "yaw"), (self.pitch, "pitch"), (self.fov, "fov")):
+                if isinstance(data.get(key), (int, float)):
+                    spin.setValue(float(data[key]))
 
     # --- mouse control ------------------------------------------------------
 
+    def _step_fov(self, steps):
+        self.fov.setValue(self.fov.value() + 5 * steps)
+
     def _sync_picker(self, *_):
         self.picker.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+        for preview in self._previews():
+            preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
 
     def _on_picker_drag(self, yaw, pitch):
         self.yaw.setValue(yaw)
@@ -266,11 +382,40 @@ class SphereDocker(DockWidget):
         return None
 
     def _refresh_thumbnail(self):
+        """Updates the picker thumbnail and the 360° preview from the current panorama."""
         doc = self._thumbnail_source()
         try:
-            self.picker.setImage(doc.thumbnail(512, 256) if doc is not None else None)
+            image = doc.thumbnail(PREVIEW_SOURCE_WIDTH, PREVIEW_SOURCE_WIDTH // 2) if doc is not None else None
         except RuntimeError:  # the document was closed meanwhile
-            self.picker.setImage(None)
+            image = None
+        self._preview_image = image
+        self.picker.setImage(image.scaled(512, 256) if image is not None else None)
+        for preview in self._previews():
+            preview.view.setSource(image)
+
+    # --- 360° preview window ------------------------------------------------
+
+    def _previews(self):
+        return _same_window(_PREVIEWS, self)
+
+    def push_to_preview(self, preview):
+        """Gives a (newly shown) preview docker the current panorama and direction."""
+        preview.view.setSource(self._preview_image)
+        preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+
+    def open_preview(self):
+        previews = self._previews()
+        if not previews:
+            self._fail(tr("The 360° preview docker is not available. Enable it under Settings → Dockers → {name}.",
+                          name=tr("SpherePaint 360° Preview")))
+            return
+        preview = previews[0]
+        if not preview.isVisible():
+            preview.setFloating(True)
+            preview.resize(480, 480)
+        preview.show()
+        preview.raise_()
+        self.push_to_preview(preview)
 
     # --- helpers ------------------------------------------------------------
 
@@ -482,6 +627,8 @@ class SphereDocker(DockWidget):
         except Exception as e:  # show the error in the panel instead of crashing Krita
             self._fail(tr("Projection failed: {error}", error=e))
             return
+        self._save_direction(doc)
+        self._last_source_id = _doc_id(doc)
         self._done(tr("View {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
                       "Paint in the layer '{layer}', then press 'Write back'.",
                       size=size, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov, layer=PAINT_LAYER))

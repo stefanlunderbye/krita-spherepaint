@@ -128,6 +128,21 @@ def equirect_to_view(equirect, view):
     return out
 
 
+def render_perspective(equirect, yaw_deg, pitch_deg, fov_deg, width, height):
+    """A perspective view of any size, for previews; ``fov_deg`` is the horizontal field of view."""
+    view = View(yaw_deg, pitch_deg, fov_deg, width)
+    focal = (width / 2.0) / math.tan(view.fov / 2.0)
+    h, w = equirect.shape[:2]
+    cx, cy = np.meshgrid(np.arange(width, dtype=np.float64) + 0.5 - width / 2.0,
+                         -(np.arange(height, dtype=np.float64) + 0.5 - height / 2.0))
+    cz = np.full_like(cx, focal)
+    norm = np.sqrt(cx * cx + cy * cy + cz * cz)
+    wx, wy, wz = view.cam_to_world(cx / norm, cy / norm, cz / norm)
+    sx = (np.arctan2(wx, wz) + math.pi) / (2 * math.pi) * w - 0.5
+    sy = (math.pi / 2 - np.arcsin(np.clip(wy, -1.0, 1.0))) / math.pi * h - 0.5
+    return _to_dtype(_sample(equirect, sx, sy, wrap_x=True), equirect.dtype)
+
+
 def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
     """Projects the view back onto equirectangular rows r0..r1.
 

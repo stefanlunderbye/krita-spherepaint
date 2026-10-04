@@ -116,6 +116,17 @@ def test_cube_faces_tile_the_sphere():
     assert face_at(44, 0) == "front" and face_at(46, 0) == "right"
 
 
+def test_preview_matches_the_projection_for_square_views():
+    eq = gradient_equirect()
+    view = P.View(40, -15, 80, 200)
+    assert np.array_equal(P.render_perspective(eq, 40, -15, 80, 200, 200), P.equirect_to_view(eq, view))
+
+
+def test_preview_can_be_rectangular():
+    img = P.render_perspective(gradient_equirect(), 0, 0, 90, 160, 90)
+    assert img.shape == (90, 160, 4)
+
+
 def test_cube_round_trip_reproduces_the_panorama():
     rng = np.random.default_rng(1)
     # Smooth content so resampling error stays small: low-frequency colour waves.

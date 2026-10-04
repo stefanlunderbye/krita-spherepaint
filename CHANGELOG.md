@@ -7,6 +7,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- 360° preview as its own docker (*SpherePaint 360° Preview*) that floats as a movable, resizable window: drag to look around, scroll to zoom, release to project. The yellow frame shows exactly what the projection will cover.
+- The view direction (yaw, pitch, field of view) is stored in the panorama document and restored when switching back to it or reopening the .kra file.
 - *Export for 360° viewers…*: saves a JPEG with Google Photo Sphere (GPano) XMP metadata, so Facebook, Google Photos, Kuula and other viewers show it as a panorama.
 - Prepared for Krita 6: the plugin uses whichever of PyQt5/PyQt6 Krita has loaded, with fully scoped Qt enum names.
 - Issue templates, a contributing guide and this changelog.

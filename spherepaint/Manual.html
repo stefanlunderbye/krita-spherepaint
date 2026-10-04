@@ -18,6 +18,13 @@
 <li>Use <strong>Show flat</strong> and <strong>Show projection</strong> to switch between the two documents. Change the direction and press <strong>Project view</strong> again to work on another part of the sphere.</li>
 </ol>
 
+<h2>360° preview</h2>
+<p><strong>Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked).</p>
+<p>The area inside the yellow frame is exactly what <strong>Project view</strong> will show; in a non-square window the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
+
+<h2>Remembered direction</h2>
+<p>Every projection stores its yaw, pitch and field of view in the panorama document. When you switch back to that panorama, or open the saved <em>.kra</em> file later, the panel restores them, so you continue where you left off.</p>
+
 <h2>Several layers</h2>
 <p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
 <p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project view</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>

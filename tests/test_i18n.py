@@ -7,7 +7,7 @@ import string
 
 from conftest import PLUGIN_DIR
 
-UI_MODULES = ("docker.py", "picker.py", "guide.py", "actions.py")
+UI_MODULES = ("docker.py", "picker.py", "preview.py", "guide.py", "actions.py")
 # Strings translated through a variable rather than a literal tr("...") call.
 DYNAMIC_KEYS = ("Front", "Right", "Back", "Left", "Up", "Down",
                 "FRONT", "RIGHT", "BACK", "LEFT", "TOP", "BOTTOM")

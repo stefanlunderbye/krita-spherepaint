@@ -16,9 +16,12 @@ except ImportError as e:
 from krita import DockWidgetFactory, DockWidgetFactoryBase, Krita  # noqa: E402
 
 from .actions import SpherePaintActions  # noqa: E402
-from .docker import SphereDocker  # noqa: E402
+from .docker import PreviewDocker, SphereDocker  # noqa: E402
 
 Krita.instance().addDockWidgetFactory(
     DockWidgetFactory("spherepaint_docker", DockWidgetFactoryBase.DockRight, SphereDocker)
+)
+Krita.instance().addDockWidgetFactory(
+    DockWidgetFactory("spherepaint_preview", DockWidgetFactoryBase.DockRight, PreviewDocker)
 )
 Krita.instance().addExtension(SpherePaintActions(Krita.instance()))

@@ -43,6 +43,7 @@ QHBoxLayout = QtWidgets.QHBoxLayout
 QLabel = QtWidgets.QLabel
 QMessageBox = QtWidgets.QMessageBox
 QPushButton = QtWidgets.QPushButton
+QSizeGrip = QtWidgets.QSizeGrip
 QSizePolicy = QtWidgets.QSizePolicy
 QSpinBox = QtWidgets.QSpinBox
 QToolButton = QtWidgets.QToolButton

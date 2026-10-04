@@ -26,6 +26,15 @@ SV = {
     "SpherePaint: Add guide layer": "SpherePaint: Lägg till hjälplager",
     "Open the SpherePaint docker first (Settings → Dockers → SpherePaint).":
         "Öppna SpherePaint-panelen först (Inställningar → Paneler → SpherePaint).",
+    "360° preview of the projection: drag to look around, scroll to zoom":
+        "360°-förhandsvisning av projektionen: dra för att se dig omkring, scrolla för att zooma",
+    "Open 360° preview": "Öppna 360°-förhandsvisning",
+    "Opens the 360° preview as a window you can move and resize":
+        "Öppnar 360°-förhandsvisningen som ett fönster du kan flytta och ändra storlek på",
+    "The 360° preview docker is not available. Enable it under Settings → Dockers → {name}.":
+        "Panelen för 360°-förhandsvisning finns inte. Aktivera den under Inställningar → Paneler → {name}.",
+    "SpherePaint 360° Preview": "SpherePaint 360°-förhandsvisning",
+    "Drag to resize the preview window": "Dra för att ändra storlek på förhandsvisningen",
     "Export for 360° viewers…": "Exportera för 360°-visare…",
     "Saves a JPEG with 360° metadata (GPano), recognised by Facebook, Google Photos, Kuula and other viewers":
         "Sparar en JPEG med 360°-metadata (GPano) som Facebook, Google Photos, Kuula och andra visare känner igen",
