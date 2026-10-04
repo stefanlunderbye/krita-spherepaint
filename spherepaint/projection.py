@@ -200,6 +200,22 @@ def cube_to_equirect(faces, width, height):
     return out
 
 
+def equirect_to_cube(equirect, face_size):
+    """Splits an equirectangular image into six (name, image) cube faces, as seen from the centre.
+
+    Front/right/back/left are upright; the top face's image "up" points to the back
+    and the bottom face's to the front, matching the views used by ``cube_to_equirect``.
+    """
+    return [(name, equirect_to_view(equirect, View(yaw, pitch, 90, face_size)))
+            for name, yaw, pitch in CUBE_FACES]
+
+
+def equirect_size_for_faces(face_size):
+    """Equirectangular (width, height) with the same density as cube faces of ``face_size``."""
+    width = 2 * max(1, round(math.pi * face_size / 2))
+    return width, width // 2
+
+
 def change_mask(before, after):
     """1.0 where any channel differs between two same-sized images, otherwise 0."""
     return np.any(before != after, axis=2).astype(np.float32)

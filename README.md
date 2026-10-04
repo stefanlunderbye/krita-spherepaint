@@ -36,6 +36,8 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Writes back only the pixels you changed – the rest of the image is never resampled
 - Toggle between the flat equirectangular image and the projection
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
+- Several layers: extra layers in the view are written back to same-named panorama layers
+- Cube map export and import (six faces, PNG or EXR)
 - Guide layer with labelled cube faces (front, right, back, left, top, bottom), grid and centre crosses, correctly distorted
 - Keyboard-shortcut actions for project, write back, toggle view, undo and guide layer
 - Premultiplied-alpha resampling, so semi-transparent strokes keep clean edges
@@ -45,13 +47,15 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 ## Requirements
 
 - Krita 5 (developed and tested with Krita 5.3)
-- NumPy for Krita's bundled Python (included in release zips for Windows)
+- NumPy for Krita's bundled Python – included in the release zips
 
 ## Installation
 
-### From a release zip (Windows)
+### From a release zip
 
-1. Download the latest `krita-spherepaint-<version>-windows.zip` from Releases.
+1. Download the zip for your system from Releases: `krita-spherepaint-<version>-windows.zip`,
+   `-linux.zip` or `-macos.zip` (Apple Silicon and Intel). The Linux and macOS zips bundle
+   NumPy for Python 3.10–3.13 and the plugin picks the one matching your Krita.
 2. In Krita: **Tools → Scripts → Import Python Plugin from File…** and choose the zip.
 3. Restart Krita, enable **SpherePaint** in **Settings → Configure Krita → Python Plugin Manager**, and restart again.
 4. Show the panel with **Settings → Dockers → SpherePaint**.
@@ -94,10 +98,11 @@ The same tests run on GitHub Actions for every push and pull request.
 ## Building a release zip
 
 ```powershell
-./tools/build-release.ps1 -Version 0.1.0
+./tools/build-release.ps1 -Version 0.3.0 -Platform windows   # or linux, macos
 ```
 
-Creates `dist/krita-spherepaint-0.1.0-windows.zip` containing the plugin and its bundled NumPy.
+Creates `dist/krita-spherepaint-0.3.0-<platform>.zip` with the plugin and NumPy for each
+supported Python version under `spherepaint/_vendor/cpXY-<platform>-<machine>`.
 
 ## License
 

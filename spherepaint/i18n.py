@@ -26,6 +26,30 @@ SV = {
     "SpherePaint: Add guide layer": "SpherePaint: Lägg till hjälplager",
     "Open the SpherePaint docker first (Settings → Dockers → SpherePaint).":
         "Öppna SpherePaint-panelen först (Inställningar → Paneler → SpherePaint).",
+    "Export cube map…": "Exportera kubkarta…",
+    "Saves the panorama as six cube faces (front, right, back, left, top, bottom)":
+        "Sparar panoramat som sex kubsidor (fram, höger, bak, vänster, upp, ner)",
+    "Import cube map…": "Importera kubkarta…",
+    "Builds a panorama from six cube faces; choose the *_front image":
+        "Bygger ett panorama av sex kubsidor; välj bilden *_front",
+    "Export cube map to folder": "Exportera kubkarta till mapp",
+    "{count} of the files already exist. Overwrite them?": "{count} av filerna finns redan. Skriva över dem?",
+    "Exporting cube map…": "Exporterar kubkarta…",
+    "Exporting the cube map failed: {error}": "Kubkartan kunde inte exporteras: {error}",
+    "Cube map exported: six {size}×{size} px faces in {folder}.":
+        "Kubkartan är exporterad: sex sidor på {size}×{size} px i {folder}.",
+    "Choose the front face of the cube map": "Välj kubkartans framsida",
+    "Images (*.png *.jpg *.jpeg *.tif *.tiff *.exr *.kra *.webp)":
+        "Bilder (*.png *.jpg *.jpeg *.tif *.tiff *.exr *.kra *.webp)",
+    "Choose the file whose name ends in _front.": "Välj filen vars namn slutar på _front.",
+    "Missing cube faces: {files}": "Kubsidor saknas: {files}",
+    "Importing cube map…": "Importerar kubkarta…",
+    "All faces must be square and the same size.": "Alla sidor måste vara kvadratiska och lika stora.",
+    "All faces must have the same colour model and depth.":
+        "Alla sidor måste ha samma färgmodell och färgdjup.",
+    "Importing the cube map failed: {error}": "Kubkartan kunde inte importeras: {error}",
+    "Panorama {width}×{height} px created from the cube map.":
+        "Panorama på {width}×{height} px skapat från kubkartan.",
     "Add guide layer": "Lägg till hjälplager",
     "Adds a layer with a labelled grid (front, right, back, left, top, bottom)":
         "Lägger till ett lager med ett märkt rutnät (fram, höger, bak, vänster, upp, ner)",
@@ -89,7 +113,9 @@ SV = {
     "Nothing has changed in the view since the last projection.":
         "Inget har ändrats i vyn sedan senaste projektionen.",
     "Write-back failed: {error}": "Tillbakaskrivningen misslyckades: {error}",
-    "Done: {count} pixels updated in '{layer}'.": "Klart: {count} pixlar uppdaterade i '{layer}'.",
+    "Done: {count} pixels updated in {layers}.": "Klart: {count} pixlar uppdaterade i {layers}.",
+    "The layer '{layer}' in the panorama is not a paint layer.":
+        "Lagret '{layer}' i panoramat är inget målarlager.",
     "The last write-back has been undone in the equirectangular image. "
     "The view is unchanged – press 'Write back' again to redo it.":
         "Senaste tillbakaskrivningen är ångrad i equirect-bilden. "

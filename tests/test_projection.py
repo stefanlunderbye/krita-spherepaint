@@ -116,6 +116,32 @@ def test_cube_faces_tile_the_sphere():
     assert face_at(44, 0) == "front" and face_at(46, 0) == "right"
 
 
+def test_cube_round_trip_reproduces_the_panorama():
+    rng = np.random.default_rng(1)
+    # Smooth content so resampling error stays small: low-frequency colour waves.
+    lon = np.linspace(0, 2 * np.pi, W, endpoint=False)[None, :]
+    lat = np.linspace(0, np.pi, H)[:, None]
+    eq = np.zeros((H, W, 4), np.uint8)
+    eq[..., 0] = 127 + 100 * np.sin(lon) * np.sin(lat)
+    eq[..., 1] = 127 + 100 * np.cos(2 * lat)
+    eq[..., 2] = rng.integers(100, 110)
+    eq[..., 3] = 255
+    face_size = P.matching_view_size(W, 90)
+    faces = P.equirect_to_cube(eq, face_size)
+    assert [name for name, _ in faces] == [name for name, _, _ in P.CUBE_FACES]
+    views = [(P.View(yaw, pitch, 90, face_size), img) for (_, yaw, pitch), (_, img) in zip(P.CUBE_FACES, faces)]
+    back = P.cube_to_equirect(views, W, H)
+    error = np.abs(back.astype(int) - eq.astype(int))[..., :3]
+    assert error.mean() < 1.0
+    assert np.percentile(error, 99) <= 4
+
+
+def test_equirect_size_for_faces_matches_density():
+    width, height = P.equirect_size_for_faces(1024)
+    assert width == 2 * height
+    assert abs(P.matching_view_size(width, 90) - 1024) <= 1
+
+
 def test_view_outline_matches_camera_rays():
     view = P.View(20, 10, 90, 512)
     lon, lat = P.view_outline(view, samples_per_edge=8)

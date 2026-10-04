@@ -9,11 +9,15 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"  # the Python bundled with Krita 5.3
+          python-version: "3.13"  # the Python bundled with Krita 5.3 on Windows
       - run: python -m pip install --disable-pip-version-check numpy pytest
       - run: python -m pytest -q
