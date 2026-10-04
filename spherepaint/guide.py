@@ -1,10 +1,8 @@
 """Guide grid: labelled cube faces (front, right, back, left, top, bottom) as an equirectangular layer."""
 import numpy as np
-from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen
-
 from . import projection as P
 from .i18n import tr
+from .qt import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QRectF, Qt
 
 LABELS = {"front": "FRONT", "right": "RIGHT", "back": "BACK", "left": "LEFT", "top": "TOP", "bottom": "BOTTOM"}
 COLOURS = {
@@ -16,12 +14,12 @@ SUPPORTED_DEPTHS = {"U8": (np.uint8, 1), "U16": (np.uint16, 257)}
 
 def render_face(name, size):
     """One cube face as BGRA uint8 (size, size, 4): border, 4×4 grid, centre cross and label."""
-    image = QImage(size, size, QImage.Format_ARGB32)
-    image.fill(Qt.transparent)
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
     colour = COLOURS[name]
     p = QPainter(image)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setRenderHint(QPainter.TextAntialiasing)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
     thin = QPen(QColor(colour.red(), colour.green(), colour.blue(), 150), max(1.0, size / 600))
     p.setPen(thin)
@@ -49,13 +47,14 @@ def render_face(name, size):
     # label goes below the centre to land above FRONT, upright in the flat image.
     label_y = 0.64 if name == "top" else 0.36
     path.translate(metrics_rect.center().x() - bounds.center().x(), size * label_y - bounds.center().y())
-    p.setPen(QPen(QColor(0, 0, 0, 200), max(2.0, size / 200), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.setPen(QPen(QColor(0, 0, 0, 200), max(2.0, size / 200), Qt.PenStyle.SolidLine,
+                   Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
     p.setBrush(colour)
     p.drawPath(path)
     p.end()
 
     ptr = image.constBits()
-    ptr.setsize(image.byteCount())
+    ptr.setsize(image.sizeInBytes())
     return np.frombuffer(ptr, dtype=np.uint8).reshape(size, size, 4).copy()
 
 

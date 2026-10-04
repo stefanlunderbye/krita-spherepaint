@@ -1,0 +1,61 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! Linux and macOS reports are especially helpful.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open an 8192×4096 image
+        2. Project view with yaw 90
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: Paste any error from the SpherePaint panel, a Krita dialog or the Python Plugin Manager.
+      render: text
+  - type: input
+    id: spherepaint
+    attributes:
+      label: SpherePaint version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: krita
+    attributes:
+      label: Krita version
+      description: Help → About Krita
+      placeholder: "5.3.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+  - type: input
+    id: image
+    attributes:
+      label: Image size and colour depth
+      placeholder: "8192×4096, RGBA 8-bit"

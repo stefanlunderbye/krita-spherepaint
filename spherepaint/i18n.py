@@ -8,7 +8,7 @@ otherwise the system language.
 import configparser
 import os
 
-from PyQt5.QtCore import QLocale, QStandardPaths
+from .qt import QLocale, QStandardPaths
 
 SV = {
     "Yaw": "Girvinkel (yaw)",
@@ -26,6 +26,14 @@ SV = {
     "SpherePaint: Add guide layer": "SpherePaint: Lägg till hjälplager",
     "Open the SpherePaint docker first (Settings → Dockers → SpherePaint).":
         "Öppna SpherePaint-panelen först (Inställningar → Paneler → SpherePaint).",
+    "Export for 360° viewers…": "Exportera för 360°-visare…",
+    "Saves a JPEG with 360° metadata (GPano), recognised by Facebook, Google Photos, Kuula and other viewers":
+        "Sparar en JPEG med 360°-metadata (GPano) som Facebook, Google Photos, Kuula och andra visare känner igen",
+    "Export for 360° viewers": "Exportera för 360°-visare",
+    "JPEG image (*.jpg *.jpeg)": "JPEG-bild (*.jpg *.jpeg)",
+    "Exporting…": "Exporterar…",
+    "Exporting failed: {error}": "Exporten misslyckades: {error}",
+    "Saved {file} with 360° metadata.": "{file} är sparad med 360°-metadata.",
     "Export cube map…": "Exportera kubkarta…",
     "Saves the panorama as six cube faces (front, right, back, left, top, bottom)":
         "Sparar panoramat som sex kubsidor (fram, höger, bak, vänster, upp, ner)",
@@ -127,7 +135,7 @@ CATALOGS = {"sv": SV}
 
 def _override_language():
     """The language chosen in Krita (Settings → Switch Application Language), if any."""
-    base = QStandardPaths.writableLocation(QStandardPaths.GenericConfigLocation)
+    base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericConfigLocation)
     path = os.path.join(base, "klanguageoverridesrc")
     if not os.path.isfile(path):
         return None

@@ -1,9 +1,9 @@
 """Mouse control for the view direction: a thumbnail of the panorama to click and drag on."""
-from PyQt5.QtCore import QPointF, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
-from PyQt5.QtWidgets import QSizePolicy, QWidget
-
 from . import projection as P
+from .qt import (
+    QColor, QImage, QPainter, QPainterPath, QPen, QPointF, QSize, QSizePolicy, Qt, QWidget,
+    event_pos, pyqtSignal,
+)
 
 
 class DirectionPicker(QWidget):
@@ -26,8 +26,8 @@ class DirectionPicker(QWidget):
         self._fov = 90.0
         self._dragging = False
         self.setMouseTracking(False)
-        self.setCursor(Qt.CrossCursor)
-        policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
         self.setMinimumSize(160, 80)
@@ -76,13 +76,14 @@ class DirectionPicker(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         x0, y0, rw, rh = self._rect()
         if self._image is not None:
-            p.drawImage(x0, y0, self._image.scaled(rw, rh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+            p.drawImage(x0, y0, self._image.scaled(rw, rh, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                                   Qt.TransformationMode.SmoothTransformation))
         else:
             p.fillRect(x0, y0, rw, rh, QColor(40, 40, 40))
-        grid = QPen(QColor(255, 255, 255, 50), 1, Qt.DotLine)
+        grid = QPen(QColor(255, 255, 255, 50), 1, Qt.PenStyle.DotLine)
         p.setPen(grid)
         for lon in (-90, 0, 90):
             x, _ = self._to_widget(lon, 0)
@@ -116,18 +117,18 @@ class DirectionPicker(QWidget):
     # --- input --------------------------------------------------------------
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._emit_change(event.pos())
+            self._emit_change(event_pos(event))
 
     def mouseMoveEvent(self, event):
         if self._dragging:
-            self._emit_change(event.pos())
+            self._emit_change(event_pos(event))
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self._dragging:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
-            yaw, pitch = self._from_widget(event.pos())
+            yaw, pitch = self._from_widget(event_pos(event))
             self.directionPicked.emit(yaw, pitch)
 
     def wheelEvent(self, event):

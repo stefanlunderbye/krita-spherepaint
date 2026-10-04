@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an idea for SpherePaint
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the painting task or workflow, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could SpherePaint help?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you do it today?

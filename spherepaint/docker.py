@@ -4,16 +4,18 @@ import weakref
 
 import numpy as np
 from krita import DockWidget, InfoObject, Krita
-from PyQt5.QtCore import QByteArray, Qt
-from PyQt5.QtWidgets import (
-    QApplication, QCheckBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-    QMessageBox, QPushButton, QSpinBox, QToolButton, QVBoxLayout, QWidget,
-)
 
-from . import guide
+from . import guide, xmp
 from . import projection as P
 from .i18n import tr
 from .picker import DirectionPicker
+from .qt import (
+    QApplication, QByteArray, QCheckBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
+    QLabel, QMessageBox, QPushButton, QSpinBox, Qt, QToolButton, QVBoxLayout, QWidget,
+)
+
+YES, NO, CANCEL = (QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No,
+                   QMessageBox.StandardButton.Cancel)
 
 DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32}
 TITLE = "SpherePaint"  # product name, not translated
@@ -223,6 +225,12 @@ class SphereDocker(DockWidget):
         cube.addWidget(self.btn_import_cube)
         layout.addLayout(cube)
 
+        self.btn_export_360 = QPushButton(tr("Export for 360° viewers…"))
+        self.btn_export_360.setToolTip(tr("Saves a JPEG with 360° metadata (GPano), recognised by Facebook, "
+                                          "Google Photos, Kuula and other viewers"))
+        self.btn_export_360.clicked.connect(self.export_360)
+        layout.addWidget(self.btn_export_360)
+
         self.status = QLabel(tr("Open an equirectangular image (2:1) and select the layer you want to paint on."))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -352,7 +360,7 @@ class SphereDocker(DockWidget):
 
     def _busy(self, text):
         self.status.setText(text)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
 
     def _done(self, text):
@@ -387,10 +395,10 @@ class SphereDocker(DockWidget):
                     self, TITLE,
                     tr("The view has changes that haven't been written back. Write them back first? "
                        "Otherwise they are discarded."),
-                    QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
-                if answer == QMessageBox.Cancel:
+                    YES | NO | CANCEL)
+                if answer == CANCEL:
                     return
-                if answer == QMessageBox.Yes:
+                if answer == YES:
                     self.apply()
 
         if node is None or node.type() != "paintlayer":
@@ -406,7 +414,7 @@ class SphereDocker(DockWidget):
                 self, TITLE,
                 tr("The image is {w}×{h}, not 2:1. Equirectangular images are usually 2:1. Continue anyway?",
                    w=w, h=h))
-            if answer != QMessageBox.Yes:
+            if answer != YES:
                 return
 
         fov = self.fov.value()
@@ -526,7 +534,7 @@ class SphereDocker(DockWidget):
         existing = [p for p in paths.values() if os.path.exists(p)]
         if existing and QMessageBox.question(
                 self, TITLE, tr("{count} of the files already exist. Overwrite them?", count=len(existing))
-        ) != QMessageBox.Yes:
+        ) != YES:
             return
         self._busy(tr("Exporting cube map…"))
         try:
@@ -539,6 +547,38 @@ class SphereDocker(DockWidget):
             self._fail(tr("Exporting the cube map failed: {error}", error=e))
             return
         self._done(tr("Cube map exported: six {size}×{size} px faces in {folder}.", size=face_size, folder=folder))
+
+    def export_360(self):
+        doc = self._thumbnail_source()
+        if doc is None:
+            self._fail(tr("Open an equirectangular image (2:1) first."))
+            return
+        base = os.path.splitext(doc.fileName() or "panorama")[0]
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export for 360° viewers"), base + "_360.jpg",
+                                              tr("JPEG image (*.jpg *.jpeg)"))
+        if not path:
+            return
+        if not path.lower().endswith((".jpg", ".jpeg")):
+            path += ".jpg"
+        self._busy(tr("Exporting…"))
+        batch = doc.batchmode()
+        try:
+            info = InfoObject()
+            info.setProperty("quality", 95)
+            doc.setBatchmode(True)  # no export dialog
+            doc.waitForDone()
+            if not doc.exportImage(path, info):
+                raise OSError(path)
+            with open(path, "rb") as f:
+                data = f.read()
+            with open(path, "wb") as f:
+                f.write(xmp.add_gpano(data, doc.width(), doc.height()))
+        except Exception as e:
+            self._fail(tr("Exporting failed: {error}", error=e))
+            return
+        finally:
+            doc.setBatchmode(batch)
+        self._done(tr("Saved {file} with 360° metadata.", file=os.path.basename(path)))
 
     def _save_image(self, pixels, path, like):
         """Writes pixels to an image file through a temporary Krita document with ``like``'s colour space."""

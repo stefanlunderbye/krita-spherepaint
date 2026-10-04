@@ -22,6 +22,9 @@
 <p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
 <p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project view</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>
 
+<h2>Sharing as a 360° image</h2>
+<p><strong>Export for 360° viewers…</strong> saves the panorama (all visible layers) as a JPEG and adds Google Photo Sphere (GPano) metadata. Facebook, Google Photos, Kuula and most 360° viewers use it to show the image as an interactive panorama instead of a flat picture. Hide the guide layer before exporting if you don't want it in the image.</p>
+
 <h2>Cube maps</h2>
 <p><strong>Export cube map…</strong> saves the panorama (all visible layers) as six square images in a folder of your choice: <em>name_front, _right, _back, _left, _top, _bottom</em>, as PNG for 8/16-bit images and EXR for floating point. The face size matches the panorama's pixel density.</p>
 <p><strong>Import cube map…</strong> asks for the <em>_front</em> image, finds the five others next to it, and creates a new panorama from them. All faces must be square, the same size and the same colour depth.</p>

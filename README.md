@@ -38,6 +38,8 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
 - Several layers: extra layers in the view are written back to same-named panorama layers
 - Cube map export and import (six faces, PNG or EXR)
+- Export for 360° viewers: JPEG with GPano metadata, shown as a panorama on Facebook, Google Photos, Kuula and others
+- Works with Krita 5 (PyQt5) and is prepared for Krita 6 (PyQt6)
 - Guide layer with labelled cube faces (front, right, back, left, top, bottom), grid and centre crosses, correctly distorted
 - Keyboard-shortcut actions for project, write back, toggle view, undo and guide layer
 - Premultiplied-alpha resampling, so semi-transparent strokes keep clean edges
@@ -103,6 +105,10 @@ The same tests run on GitHub Actions for every push and pull request.
 
 Creates `dist/krita-spherepaint-0.3.0-<platform>.zip` with the plugin and NumPy for each
 supported Python version under `spherepaint/_vendor/cpXY-<platform>-<machine>`.
+
+## Contributing
+
+Bug reports – especially from Linux and macOS – and contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [changelog](CHANGELOG.md).
 
 ## License
 

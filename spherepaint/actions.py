@@ -4,10 +4,9 @@ They appear under Tools → Scripts and in Settings → Configure Krita →
 Keyboard Shortcuts, where the user assigns keys.
 """
 from krita import Extension, Krita
-from PyQt5.QtWidgets import QMessageBox
-
 from .docker import TITLE, docker_for_active_window
 from .i18n import tr
+from .qt import QMessageBox
 
 # (action id, menu text, docker method)
 ACTIONS = (

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Krita itself
+    url: https://krita.org/en/support-us/report-a-bug/
+    about: Problems with Krita that also happen without SpherePaint belong in Krita's bug tracker.
