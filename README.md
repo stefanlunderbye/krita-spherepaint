@@ -6,6 +6,26 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 
 > SpherePaint is an independent project and is not affiliated with or endorsed by the Krita Foundation.
 
+## How it works
+
+**1. Start with an equirectangular image.** Straight lines and shapes are distorted, so painting directly is hard.
+
+![Equirectangular panorama in Krita with the SpherePaint docker](docs/flat.jpg)
+
+**2. Project a view.** Choose a direction and SpherePaint opens an undistorted perspective view of it.
+
+![Undistorted perspective view of the same direction](docs/projection.jpg)
+
+**3. Paint as usual.** Everything behaves like a normal image – here a simple sign.
+
+![A sign painted in the perspective view](docs/painted.jpg)
+
+**4. Write back to the sphere.** The sign lands in the panorama with the correct spherical distortion.
+
+![The sign written back into the equirectangular panorama](docs/result.jpg)
+
+<sub>Example panorama: [Rural Asphalt Road](https://polyhaven.com/a/rural_asphalt_road) by Alexander Scholten, Poly Haven (CC0).</sub>
+
 ## Features
 
 - Docker panel with yaw, pitch and field of view, plus quick buttons (front, right, back, left, up, down)
