@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+from . import guide
 from . import projection as P
 from .i18n import tr
 from .picker import DirectionPicker
@@ -143,6 +144,11 @@ class SphereDocker(DockWidget):
         toggle.addWidget(self.btn_flat)
         toggle.addWidget(self.btn_proj)
         layout.addLayout(toggle)
+
+        self.btn_guide = QPushButton(tr("Add guide layer"))
+        self.btn_guide.setToolTip(tr("Adds a layer with a labelled grid (front, right, back, left, top, bottom)"))
+        self.btn_guide.clicked.connect(self.add_guide)
+        layout.addWidget(self.btn_guide)
 
         self.status = QLabel(tr("Open an equirectangular image (2:1) and select the layer you want to paint on."))
         self.status.setWordWrap(True)
@@ -361,6 +367,34 @@ class SphereDocker(DockWidget):
         self._done(tr("View {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
                       "Paint in the layer '{layer}', then press 'Write back'.",
                       size=size, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov, layer=PAINT_LAYER))
+
+    # --- guide layer --------------------------------------------------------
+
+    def add_guide(self):
+        doc = self._thumbnail_source()
+        if doc is None:
+            self._fail(tr("Open an equirectangular image (2:1) first."))
+            return
+        if doc.colorModel() != "RGBA" or doc.colorDepth() not in guide.SUPPORTED_DEPTHS:
+            self._fail(tr("The guide layer needs an RGBA image with 8 or 16 bits per channel."))
+            return
+        previous_layer = doc.activeNode()
+        self._busy(tr("Creating guide layer…"))
+        try:
+            pixels = guide.build_guide(doc.width(), doc.height(), doc.colorDepth())
+            node = doc.createNode(tr("SpherePaint guide"), "paintlayer")
+            root = doc.rootNode()
+            children = root.childNodes()
+            root.addChildNode(node, children[-1] if children else None)  # on top of everything
+            _write(node, pixels, 0, 0)
+            node.setOpacity(180)
+            doc.refreshProjection()
+            if previous_layer is not None:
+                doc.setActiveNode(previous_layer)  # keep painting where the user was
+        except Exception as e:
+            self._fail(tr("Creating the guide layer failed: {error}", error=e))
+            return
+        self._done(tr("Guide layer added. Hide or delete it like any other layer."))
 
     # --- write back ---------------------------------------------------------
 

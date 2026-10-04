@@ -19,6 +19,23 @@ SV = {
     "Click or drag to choose the direction; scroll to change the field of view":
         "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
     "Project when the mouse is released": "Projicera när musknappen släpps",
+    "Add guide layer": "Lägg till hjälplager",
+    "Adds a layer with a labelled grid (front, right, back, left, top, bottom)":
+        "Lägger till ett lager med ett märkt rutnät (fram, höger, bak, vänster, upp, ner)",
+    "Open an equirectangular image (2:1) first.": "Öppna en equirect-bild (2:1) först.",
+    "The guide layer needs an RGBA image with 8 or 16 bits per channel.":
+        "Hjälplagret kräver en RGBA-bild med 8 eller 16 bitar per kanal.",
+    "Creating guide layer…": "Skapar hjälplager…",
+    "SpherePaint guide": "SpherePaint-hjälplager",
+    "Creating the guide layer failed: {error}": "Hjälplagret kunde inte skapas: {error}",
+    "Guide layer added. Hide or delete it like any other layer.":
+        "Hjälplagret är tillagt. Dölj eller ta bort det som vilket lager som helst.",
+    "FRONT": "FRAM",
+    "RIGHT": "HÖGER",
+    "BACK": "BAK",
+    "LEFT": "VÄNSTER",
+    "TOP": "UPP",
+    "BOTTOM": "NER",
     "Front": "Fram",
     "Right": "Höger",
     "Back": "Bak",

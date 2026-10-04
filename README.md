@@ -34,6 +34,7 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Writes back only the pixels you changed – the rest of the image is never resampled
 - Toggle between the flat equirectangular image and the projection
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
+- Guide layer with labelled cube faces (front, right, back, left, top, bottom), grid and centre crosses, correctly distorted
 - One-step undo of the last write-back
 - Follows Krita's interface language (English and Swedish included)
 

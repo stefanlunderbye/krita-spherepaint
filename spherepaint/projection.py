@@ -144,6 +144,46 @@ def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
     return weight, color
 
 
+# The six cube faces as (name, yaw, pitch); with a 90° field of view they tile the sphere.
+CUBE_FACES = (
+    ("front", 0, 0), ("right", 90, 0), ("back", 180, 0),
+    ("left", -90, 0), ("top", 0, 90), ("bottom", 0, -90),
+)
+
+
+def cube_to_equirect(faces, width, height):
+    """Assembles six square face images into an equirectangular image.
+
+    ``faces`` is a list of (View, image) with 90° views, one per cube face, all
+    images (n, n, C) of the same dtype. Every equirectangular pixel is sampled
+    from the face it falls on, so the faces meet without seams or overlap.
+    """
+    dtype = faces[0][1].dtype
+    channels = faces[0][1].shape[2]
+    out = np.zeros((height, width, channels), dtype=dtype)
+    x = (np.arange(width, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
+    for r0 in range(0, height, CHUNK_ROWS):
+        r1 = min(height, r0 + CHUNK_ROWS)
+        y = math.pi / 2 - (np.arange(r0, r1, dtype=np.float64) + 0.5) / height * math.pi
+        lon, lat = np.meshgrid(x, y)
+        clat = np.cos(lat)
+        wx, wy, wz = clat * np.sin(lon), np.sin(lat), clat * np.cos(lon)
+        done = np.zeros(lon.shape, dtype=bool)
+        chunk = out[r0:r1]
+        for view, img in faces:
+            n = img.shape[0]
+            cx, cy, cz = view.world_to_cam(wx, wy, wz)
+            on_face = ~done & (cz > 1e-9) & (np.abs(cx) <= cz) & (np.abs(cy) <= cz)
+            if not on_face.any():
+                continue
+            focal = (n / 2.0) / math.tan(view.fov / 2.0)
+            u = focal * cx[on_face] / cz[on_face] + n / 2.0 - 0.5
+            v = -focal * cy[on_face] / cz[on_face] + n / 2.0 - 0.5
+            chunk[on_face] = _to_dtype(_sample(img, u, v, wrap_x=False), dtype)
+            done |= on_face
+    return out
+
+
 def change_mask(before, after):
     """1.0 where any channel differs between two same-sized images, otherwise 0."""
     return np.any(before != after, axis=2).astype(np.float32)
