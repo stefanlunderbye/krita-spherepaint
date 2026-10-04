@@ -1,0 +1,30 @@
+# Vendored numpy is bundled into release zips, not committed
+spherepaint/_vendor/
+
+# Build output
+dist/
+build/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets and local config – never commit
+.env
+.env.*
+*.pem
+*.key
+id_*
+*.p12
+*.pfx
+
+# Editors and OS
+.vscode/
+.idea/
+.claude/settings.local.json
+Thumbs.db
+Desktop.ini
+.DS_Store
