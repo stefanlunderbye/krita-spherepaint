@@ -37,6 +37,25 @@ def _doc_id(doc):
     return root.uniqueId() if root is not None else None
 
 
+def _find_paint_node(view_doc):
+    """The layer to write back, looked up fresh each time.
+
+    Merging layers in Krita replaces the node, so a stored reference goes stale.
+    Prefer the layer named PAINT_LAYER; otherwise, if exactly one paint layer
+    besides the reference exists (e.g. after a merge that kept another name),
+    use it and give it the expected name. Returns None if it is ambiguous.
+    """
+    candidates = [n for n in view_doc.rootNode().childNodes()
+                  if n.type() == "paintlayer" and n.name() != REFERENCE_LAYER]
+    for node in candidates:
+        if node.name() == PAINT_LAYER:
+            return node
+    if len(candidates) == 1:
+        candidates[0].setName(PAINT_LAYER)
+        return candidates[0]
+    return None
+
+
 class Session:
     """An ongoing projection: the source image, the view, and what the view looked like originally."""
 
@@ -246,7 +265,10 @@ class SphereDocker(DockWidget):
                      and self.session.view_doc.width() == size)
             if reuse:
                 view_doc = self.session.view_doc
-                view_node = self.session.view_node
+                view_node = _find_paint_node(view_doc)
+                if view_node is None:
+                    view_node = view_doc.createNode(PAINT_LAYER, "paintlayer")
+                    view_doc.rootNode().addChildNode(view_node, None)
                 ref_node = view_doc.nodeByName(REFERENCE_LAYER)
             else:
                 view_doc = app.createDocument(size, size, tr("Sphere view – {name}", name=doc.name() or tr("untitled")),
@@ -286,13 +308,22 @@ class SphereDocker(DockWidget):
 
     def _current_view_pixels(self):
         s = self.session
+        node = _find_paint_node(s.view_doc)
+        if node is None:
+            raise LookupError(tr("Cannot tell which layer to write back. Merge your layers into one "
+                                 "layer named '{layer}'.", layer=PAINT_LAYER))
+        s.view_node = node
         n = s.view.size
-        return _read(s.view_node, 0, 0, n, n, s.channels, s.dtype)
+        return _read(node, 0, 0, n, n, s.channels, s.dtype)
 
     def _has_unapplied_changes(self):
         if not self._alive():
             return False
-        return bool(P.change_mask(self.session.baseline, self._current_view_pixels()).any())
+        try:
+            current = self._current_view_pixels()
+        except LookupError:
+            return True  # let the user decide; write-back will explain the problem
+        return bool(P.change_mask(self.session.baseline, current).any())
 
     def apply(self):
         if not self._alive():

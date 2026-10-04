@@ -54,6 +54,9 @@ SV = {
     "No active projection. Press 'Project view' first.":
         "Ingen aktiv projektion. Tryck 'Projicera vy' först.",
     "Writing back…": "Skriver tillbaka…",
+    "Cannot tell which layer to write back. Merge your layers into one layer named '{layer}'.":
+        "Kan inte avgöra vilket lager som ska skrivas tillbaka. Slå ihop lagren till ett lager "
+        "som heter '{layer}'.",
     "Nothing has changed in the view since the last projection.":
         "Inget har ändrats i vyn sedan senaste projektionen.",
     "Write-back failed: {error}": "Tillbakaskrivningen misslyckades: {error}",
