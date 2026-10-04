@@ -8,8 +8,10 @@ if _vendor not in sys.path:
 
 from krita import DockWidgetFactory, DockWidgetFactoryBase, Krita  # noqa: E402
 
+from .actions import SpherePaintActions  # noqa: E402
 from .docker import SphereDocker  # noqa: E402
 
 Krita.instance().addDockWidgetFactory(
     DockWidgetFactory("spherepaint_docker", DockWidgetFactoryBase.DockRight, SphereDocker)
 )
+Krita.instance().addExtension(SpherePaintActions(Krita.instance()))

@@ -1,5 +1,7 @@
 # SpherePaint
 
+[![Tests](https://github.com/stefanlunderbye/krita-spherepaint/actions/workflows/tests.yml/badge.svg)](https://github.com/stefanlunderbye/krita-spherepaint/actions/workflows/tests.yml)
+
 A Krita plugin for painting 360° equirectangular images through undistorted perspective views.
 
 Painting directly on an equirectangular (2:1) image is awkward: straight lines bend and shapes stretch towards the poles. SpherePaint lets you pick a direction on the sphere, opens an ordinary perspective view of that direction where everything looks normal, and writes what you paint back into the equirectangular image with the correct distortion.
@@ -35,6 +37,8 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Toggle between the flat equirectangular image and the projection
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
 - Guide layer with labelled cube faces (front, right, back, left, top, bottom), grid and centre crosses, correctly distorted
+- Keyboard-shortcut actions for project, write back, toggle view, undo and guide layer
+- Premultiplied-alpha resampling, so semi-transparent strokes keep clean edges
 - One-step undo of the last write-back
 - Follows Krita's interface language (English and Swedish included)
 
@@ -55,7 +59,9 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 ### From source
 
 1. Copy (or link) `spherepaint/` and `spherepaint.desktop` into Krita's `pykrita` folder
-   (**Settings → Manage Resources → Open Resource Folder**, then `pykrita`).
+   (**Settings → Manage Resources → Open Resource Folder**, then `pykrita`), and
+   `spherepaint.action` into the `actions` folder next to it so the shortcuts show up
+   in Krita's shortcut editor.
 2. Install NumPy matching Krita's Python into `spherepaint/_vendor/`, for example:
    ```
    pip download numpy --only-binary=:all: --python-version 3.13 --platform win_amd64 --no-deps -d wheels
@@ -73,6 +79,17 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 5. Change the direction and project again to work on another part of the sphere.
 
 Note: write-back is not part of Krita's own undo history. Use **Undo last write-back** in the panel, or save before larger changes.
+
+## Running the tests
+
+The reprojection maths and the translation catalogue are tested without Krita:
+
+```
+pip install numpy pytest
+pytest
+```
+
+The same tests run on GitHub Actions for every push and pull request.
 
 ## Building a release zip
 

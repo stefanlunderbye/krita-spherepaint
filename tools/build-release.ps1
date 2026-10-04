@@ -14,6 +14,7 @@ Remove-Item (Join-Path $root 'build') -Recurse -Force -ErrorAction SilentlyConti
 New-Item -ItemType Directory $stage, $wheels, $dist -Force | Out-Null
 
 Copy-Item (Join-Path $root 'spherepaint.desktop') $stage
+Copy-Item (Join-Path $root 'spherepaint.action') $stage  # Krita's importer installs it into resources/actions
 Copy-Item (Join-Path $root 'spherepaint') $stage -Recurse
 Remove-Item (Join-Path $stage 'spherepaint\_vendor') -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'spherepaint\LICENSE')

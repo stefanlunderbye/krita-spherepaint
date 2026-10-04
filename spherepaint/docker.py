@@ -1,4 +1,6 @@
 """Docker panel: switches between the equirectangular image (flat) and a perspective view."""
+import weakref
+
 import numpy as np
 from krita import DockWidget, Krita
 from PyQt5.QtCore import QByteArray, Qt
@@ -16,6 +18,20 @@ DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32
 TITLE = "SpherePaint"  # product name, not translated
 PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
+
+
+_DOCKERS = weakref.WeakSet()  # one docker per Krita window
+
+
+def docker_for_active_window():
+    """The SpherePaint docker of the active Krita window (used by the shortcut actions)."""
+    dockers = list(_DOCKERS)
+    window = Krita.instance().activeWindow()
+    main = window.qwindow() if window else None
+    for docker in dockers:
+        if main is not None and docker.parentWidget() is main:
+            return docker
+    return dockers[0] if dockers else None
 
 
 def _read(node, x, y, w, h, channels, dtype):
@@ -78,6 +94,7 @@ class SphereDocker(DockWidget):
         super().__init__()
         self.setWindowTitle(TITLE)
         self.session = None
+        _DOCKERS.add(self)
 
         root = QWidget(self)
         layout = QVBoxLayout(root)
@@ -240,6 +257,15 @@ class SphereDocker(DockWidget):
                     view.setVisible()
                     return
         app.activeWindow().addView(doc)
+
+    def toggle_view(self):
+        """Switches between the flat equirectangular image and the projection."""
+        if not self._alive():
+            self._fail(tr("No active projection. Press 'Project view' first."))
+            return
+        active = _doc_id(Krita.instance().activeDocument())
+        on_view = active == _doc_id(self.session.view_doc)
+        self._show(self.session.src_doc if on_view else self.session.view_doc)
 
     def _close_view(self, view_doc):
         """Closes a replaced projection without a save prompt; unapplied changes were handled before."""

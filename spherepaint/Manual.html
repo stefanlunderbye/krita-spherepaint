@@ -21,6 +21,10 @@
 <h2>Guide layer</h2>
 <p><strong>Add guide layer</strong> adds a semi-transparent layer on top of the equirectangular image showing the six cube faces – <em>FRONT, RIGHT, BACK, LEFT, TOP, BOTTOM</em> – with their edges, a 4×4 grid and a centre cross, all correctly distorted. It helps you find your way around the sphere and is visible in the reference layer of projected views. Hide or delete it like any other layer. It needs an RGBA image with 8 or 16 bits per channel.</p>
 
+<h2>Keyboard shortcuts</h2>
+<p>The main commands are Krita actions, listed under <strong>Tools → Scripts</strong>: <em>Project view</em>, <em>Write back to sphere</em>, <em>Toggle flat / projection</em>, <em>Undo last write-back</em> and <em>Add guide layer</em>. Assign keys to them in <strong>Settings → Configure Krita → Keyboard Shortcuts</strong> (search for “SpherePaint”). They need the SpherePaint docker to be enabled.</p>
+<p>Function keys work well, for example <strong>F7</strong> project, <strong>F8</strong> write back, <strong>F9</strong> toggle, <strong>Shift+F8</strong> undo and <strong>Shift+F7</strong> guide layer. Avoid <strong>Alt</strong>+letter combinations: the canvas reserves Alt for Alt+click and usually swallows them.</p>
+
 <h2>Tips</h2>
 <ul>
 <li><strong>View size</strong> set to <em>Auto</em> gives the view the same pixel density as the equirectangular image at its centre. Increase it manually for more detail.</li>
@@ -35,7 +39,6 @@
 <li>Write-back is not part of Krita's undo history. Use <strong>Undo last write-back</strong> in the panel (one step), or save before larger changes.</li>
 <li>Only the layer <strong>Paint here</strong> is written back. If you paint on extra layers in the view, merge them into <strong>Paint here</strong> (e.g. <em>Merge with Layer Below</em>) before writing back.</li>
 <li>The source must be a regular paint layer. 8/16-bit integer and 16/32-bit float colour depths are supported.</li>
-<li>Semi-transparent edges may get a slight halo after resampling.</li>
 </ul>
 
 <h2>About</h2>

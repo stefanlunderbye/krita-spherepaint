@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ActionCollection version="2" name="Scripts">
+    <Actions category="Scripts">
+        <text>SpherePaint</text>
+
+        <Action name="spherepaint_project">
+            <icon />
+            <text>SpherePaint: Project view</text>
+            <whatsThis />
+            <toolTip />
+            <iconText />
+            <activationFlags>0</activationFlags>
+            <activationConditions>0</activationConditions>
+            <shortcut></shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip />
+        </Action>
+        <Action name="spherepaint_write_back">
+            <icon />
+            <text>SpherePaint: Write back to sphere</text>
+            <whatsThis />
+            <toolTip />
+            <iconText />
+            <activationFlags>0</activationFlags>
+            <activationConditions>0</activationConditions>
+            <shortcut></shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip />
+        </Action>
+        <Action name="spherepaint_toggle_view">
+            <icon />
+            <text>SpherePaint: Toggle flat / projection</text>
+            <whatsThis />
+            <toolTip />
+            <iconText />
+            <activationFlags>0</activationFlags>
+            <activationConditions>0</activationConditions>
+            <shortcut></shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip />
+        </Action>
+        <Action name="spherepaint_undo_write_back">
+            <icon />
+            <text>SpherePaint: Undo last write-back</text>
+            <whatsThis />
+            <toolTip />
+            <iconText />
+            <activationFlags>0</activationFlags>
+            <activationConditions>0</activationConditions>
+            <shortcut></shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip />
+        </Action>
+        <Action name="spherepaint_add_guide">
+            <icon />
+            <text>SpherePaint: Add guide layer</text>
+            <whatsThis />
+            <toolTip />
+            <iconText />
+            <activationFlags>0</activationFlags>
+            <activationConditions>0</activationConditions>
+            <shortcut></shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip />
+        </Action>
+    </Actions>
+</ActionCollection>

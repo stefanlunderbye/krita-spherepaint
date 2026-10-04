@@ -63,7 +63,13 @@ def view_outline(view, samples_per_edge=16):
 
 
 def _sample(img, sx, sy, wrap_x):
-    """Bilinear sampling of img (H, W, C) at floating-point coordinates; returns float32."""
+    """Bilinear sampling of img (H, W, C) at floating-point coordinates; returns float32.
+
+    Krita stores alpha as the last channel in every colour model, so images with
+    two or more channels are interpolated with premultiplied alpha. Otherwise the
+    colour of fully transparent pixels (usually black) bleeds into the edges of
+    semi-transparent strokes as a dark halo.
+    """
     h, w = img.shape[:2]
     x0 = np.floor(sx).astype(np.int64)
     y0 = np.floor(sy).astype(np.int64)
@@ -79,9 +85,19 @@ def _sample(img, sx, sy, wrap_x):
         np.clip(x1, 0, w - 1, out=x1)
     np.clip(y0, 0, h - 1, out=y0)
     np.clip(y1, 0, h - 1, out=y1)
-    top = img[y0, x0].astype(np.float32) * (1 - fx) + img[y0, x1].astype(np.float32) * fx
-    bottom = img[y1, x0].astype(np.float32) * (1 - fx) + img[y1, x1].astype(np.float32) * fx
-    return top * (1 - fy) + bottom * fy
+    corners = (img[y0, x0], img[y0, x1], img[y1, x0], img[y1, x1])
+    weights = ((1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy)
+    if img.shape[2] < 2:
+        return sum(c.astype(np.float32) * w for c, w in zip(corners, weights))
+    alpha = np.zeros(fx.shape, dtype=np.float32)
+    premultiplied = np.zeros(fx.shape[:-1] + (img.shape[2] - 1,), dtype=np.float32)
+    for c, w in zip(corners, weights):
+        c = c.astype(np.float32)
+        a = c[..., -1:] * w
+        alpha += a
+        premultiplied += c[..., :-1] * a
+    colour = np.divide(premultiplied, alpha, out=np.zeros_like(premultiplied), where=alpha > 0)
+    return np.concatenate([colour, alpha], axis=-1)
 
 
 def _to_dtype(values, dtype):

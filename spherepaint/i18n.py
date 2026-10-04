@@ -19,6 +19,13 @@ SV = {
     "Click or drag to choose the direction; scroll to change the field of view":
         "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
     "Project when the mouse is released": "Projicera när musknappen släpps",
+    "SpherePaint: Project view": "SpherePaint: Projicera vy",
+    "SpherePaint: Write back to sphere": "SpherePaint: Skriv tillbaka till sfären",
+    "SpherePaint: Toggle flat / projection": "SpherePaint: Växla platt / projektion",
+    "SpherePaint: Undo last write-back": "SpherePaint: Ångra senaste tillbakaskrivning",
+    "SpherePaint: Add guide layer": "SpherePaint: Lägg till hjälplager",
+    "Open the SpherePaint docker first (Settings → Dockers → SpherePaint).":
+        "Öppna SpherePaint-panelen först (Inställningar → Paneler → SpherePaint).",
     "Add guide layer": "Lägg till hjälplager",
     "Adds a layer with a labelled grid (front, right, back, left, top, bottom)":
         "Lägger till ett lager med ett märkt rutnät (fram, höger, bak, vänster, upp, ner)",
