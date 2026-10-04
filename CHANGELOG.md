@@ -6,6 +6,9 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Manual and README section on using SpherePaint with AI image generation (fixing poles and seams of generated panoramas, inpainting in undistorted views).
+
 ## [0.5.0] – 2026-10-04
 
 ### Changed

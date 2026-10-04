@@ -29,6 +29,16 @@
 <p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
 <p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>
 
+<h2>Working with AI image generation</h2>
+<p>Image generators such as Stable Diffusion or Flux work best on ordinary perspective images. A <em>Sphere view</em> is a normal Krita document, so tools like the <em>Krita AI Diffusion</em> plugin can be used in it like on any image – and SpherePaint writes the result back onto the sphere.</p>
+<ol>
+<li><strong>Generate a base panorama</strong> at a 2:1 size (e.g. 1536×768, then upscale) with a model or LoRA trained for 360° equirectangular images.</li>
+<li><strong>Fix the poles:</strong> generated panoramas are often blurry or swirly straight up and down. Press <strong>Up</strong> or <strong>Down</strong>, <strong>Project</strong>, inpaint the sky or ground in the undistorted view, and <strong>Write back</strong>.</li>
+<li><strong>Fix the seam:</strong> press <strong>Back</strong> – the left/right seam is then in the middle of the view. Inpaint across it and write back.</li>
+<li><strong>Add details anywhere:</strong> select an area in any view and inpaint or generate there; the model sees a normal perspective image.</li>
+</ol>
+<p>Generating directly into an extra layer in the view (e.g. <em>AI</em>) keeps the result on its own panorama layer after write-back.</p>
+
 <h2>Sharing as a 360° image</h2>
 <p><strong>⋯ → Export for 360° viewers…</strong> saves the panorama (all visible layers) as a JPEG and adds Google Photo Sphere (GPano) metadata. Facebook, Google Photos, Kuula and most 360° viewers use it to show the image as an interactive panorama instead of a flat picture. Hide the guide layer before exporting if you don't want it in the image.</p>
 

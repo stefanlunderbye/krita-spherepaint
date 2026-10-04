@@ -47,6 +47,15 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - One-step undo of the last write-back
 - Follows Krita's interface language (English and Swedish included)
 
+## Works great with AI image generation
+
+Stable Diffusion, Flux and similar models work best on ordinary perspective images – and struggle with the poles and the seam of 360° panoramas. A SpherePaint view is a normal Krita document, so you can use the [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion) plugin (or any other tool) in it:
+
+1. Generate a base panorama at 2:1 with a 360°/equirectangular model or LoRA.
+2. Press **Up** or **Down**, project, inpaint the blurry pole in the undistorted view and write back.
+3. Press **Back** to put the seam in the middle of the view, inpaint across it and write back.
+4. Inpaint or add details anywhere – the model always sees a normal perspective image.
+
 ## Requirements
 
 - Krita 5 (developed and tested with Krita 5.3)
