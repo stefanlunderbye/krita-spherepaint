@@ -19,7 +19,7 @@ Remove-Item (Join-Path $stage 'spherepaint\_vendor') -Recurse -Force -ErrorActio
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'spherepaint\LICENSE')
 
 & $Python -m pip download numpy --only-binary=:all: --python-version $PythonVersion `
-    --platform win_amd64 --implementation cp --no-deps -d $wheels --quiet
+    --platform win_amd64 --implementation cp --no-deps -d $wheels --quiet --disable-pip-version-check
 if ($LASTEXITCODE -ne 0) { throw 'pip download failed' }
 $wheel = Get-ChildItem $wheels -Filter 'numpy-*.whl' | Select-Object -First 1
 $vendor = Join-Path $stage 'spherepaint\_vendor'
