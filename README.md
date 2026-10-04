@@ -28,7 +28,8 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 
 ## Features
 
-- Docker panel with yaw, pitch and field of view, plus quick buttons (front, right, back, left, up, down)
+- Docker panel with a panorama thumbnail: click or drag to aim the view, scroll to change the field of view, with the view's outline drawn live
+- Yaw, pitch and field of view fields plus quick buttons (front, right, back, left, up, down)
 - Projects the active paint layer into a separate view document, with the merged image as a locked reference layer
 - Writes back only the pixels you changed – the rest of the image is never resampled
 - Toggle between the flat equirectangular image and the projection

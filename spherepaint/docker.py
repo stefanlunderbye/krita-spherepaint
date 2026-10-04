@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 
 from . import projection as P
 from .i18n import tr
+from .picker import DirectionPicker
 
 DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32}
 TITLE = "SpherePaint"  # product name, not translated
@@ -93,6 +94,18 @@ class SphereDocker(DockWidget):
         self.size.setEnabled(False)
         self.auto_size.toggled.connect(lambda on: self.size.setEnabled(not on))
 
+        self.picker = DirectionPicker()
+        self.picker.setToolTip(tr("Click or drag to choose the direction; scroll to change the field of view"))
+        self.picker.directionChanged.connect(self._on_picker_drag)
+        self.picker.directionPicked.connect(self._on_picker_release)
+        self.picker.fovStep.connect(lambda steps: self.fov.setValue(self.fov.value() + 5 * steps))
+        self.project_on_release = QCheckBox(tr("Project when the mouse is released"))
+        self.project_on_release.setChecked(True)
+        for spin in (self.yaw, self.pitch, self.fov):
+            spin.valueChanged.connect(self._sync_picker)
+        layout.addWidget(self.picker)
+        layout.addWidget(self.project_on_release)
+
         form.addRow(tr("Yaw"), self.yaw)
         form.addRow(tr("Pitch"), self.pitch)
         form.addRow(tr("Field of view"), self.fov)
@@ -140,6 +153,37 @@ class SphereDocker(DockWidget):
 
     def canvasChanged(self, canvas):
         self._update_buttons()
+        self._refresh_thumbnail()
+
+    # --- mouse control ------------------------------------------------------
+
+    def _sync_picker(self, *_):
+        self.picker.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+
+    def _on_picker_drag(self, yaw, pitch):
+        self.yaw.setValue(yaw)
+        self.pitch.setValue(pitch)
+
+    def _on_picker_release(self, yaw, pitch):
+        self._on_picker_drag(yaw, pitch)
+        if self.project_on_release.isChecked() and (self._alive() or Krita.instance().activeDocument()):
+            self.project()
+
+    def _thumbnail_source(self):
+        """The equirectangular image to show in the picker: the session's source, else the active image."""
+        if self._alive():
+            return self.session.src_doc
+        doc = Krita.instance().activeDocument()
+        if doc is not None and abs(doc.width() - 2 * doc.height()) <= 1:
+            return doc
+        return None
+
+    def _refresh_thumbnail(self):
+        doc = self._thumbnail_source()
+        try:
+            self.picker.setImage(doc.thumbnail(512, 256) if doc is not None else None)
+        except RuntimeError:  # the document was closed meanwhile
+            self.picker.setImage(None)
 
     # --- helpers ------------------------------------------------------------
 
@@ -200,6 +244,7 @@ class SphereDocker(DockWidget):
         QApplication.restoreOverrideCursor()
         self.status.setText(text)
         self._update_buttons()
+        self._refresh_thumbnail()
 
     def _fail(self, text):
         QApplication.restoreOverrideCursor()

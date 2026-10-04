@@ -43,6 +43,25 @@ def matching_view_size(equirect_width, fov_deg):
     return int(min(8192, max(256, round(n))))
 
 
+def view_outline(view, samples_per_edge=16):
+    """The view's border as (longitude, latitude) in degrees, walking around its edges.
+
+    Used to draw the projected area on a thumbnail of the equirectangular image.
+    """
+    t = np.linspace(-1.0, 1.0, samples_per_edge, endpoint=False)
+    ones = np.ones_like(t)
+    # Square image plane at distance 1; half-width tan(fov/2). Walk top, right, bottom, left.
+    u = np.concatenate([t, ones, -t, -ones])
+    v = np.concatenate([ones, -t, -ones, t])
+    half = math.tan(view.fov / 2.0)
+    x, y, z = u * half, v * half, np.ones_like(u)
+    norm = np.sqrt(x * x + y * y + z * z)
+    wx, wy, wz = view.cam_to_world(x / norm, y / norm, z / norm)
+    lon = np.degrees(np.arctan2(wx, wz))
+    lat = np.degrees(np.arcsin(np.clip(wy, -1.0, 1.0)))
+    return lon, lat
+
+
 def _sample(img, sx, sy, wrap_x):
     """Bilinear sampling of img (H, W, C) at floating-point coordinates; returns float32."""
     h, w = img.shape[:2]

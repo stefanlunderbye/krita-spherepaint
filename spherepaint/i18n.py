@@ -16,6 +16,9 @@ SV = {
     "Field of view": "Synfält (FOV)",
     "View size": "Vystorlek",
     "Auto (same density as the image)": "Auto (samma täthet som bilden)",
+    "Click or drag to choose the direction; scroll to change the field of view":
+        "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
+    "Project when the mouse is released": "Projicera när musknappen släpps",
     "Front": "Fram",
     "Right": "Höger",
     "Back": "Bak",
