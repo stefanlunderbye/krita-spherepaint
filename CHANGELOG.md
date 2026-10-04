@@ -6,6 +6,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-10-04
+
 ### Changed
 - Redesigned docker: yaw, pitch and field of view on one row under the thumbnail, compact direction buttons, large *Project* and *Write back* buttons side by side, *Undo* and *Flat / Projection* below, and less frequent tools (360° preview, guide layer, cube maps, 360° export, view size settings) in a **⋯** menu. Uses Krita's own icons where available.
 
@@ -49,7 +51,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - First release: docker with yaw, pitch and field of view, projection of the active layer into an undistorted perspective view, write-back of changed pixels only, flat/projection toggle, one-step undo, English and Swedish interface, plugin manual.
 
-[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.1.0...v0.2.0
