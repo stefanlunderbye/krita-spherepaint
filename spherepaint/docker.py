@@ -26,6 +26,7 @@ TITLE = "SpherePaint"  # product name, not translated
 PREVIEW_SOURCE_WIDTH = 2048  # downscaled panorama used by the thumbnail and the 360° preview
 ANNOTATION = "spherepaint"  # document annotation holding the last view direction
 # Projection aspect ratios (width / height) offered in the menu; labels are universal, not translated.
+SETTINGS_GROUP = "SpherePaint"  # section in Krita's settings file (kritarc)
 ASPECT_RATIOS = (("1:1", 1.0), ("4:3", 4 / 3), ("3:2", 3 / 2), ("16:9", 16 / 9), ("3:4", 3 / 4), ("9:16", 9 / 16))
 PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
@@ -167,6 +168,31 @@ def _quick_thumbnail(doc, width, height):
     data = b"".join(bytes(doc.pixelData(0, int(y), w, 1)) for y in rows)  # BGRA, the layout of ARGB32
     image = QImage(data, w, len(rows), w * 4, QImage.Format.Format_ARGB32)
     return image.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+
+def _read_setting(name, default):
+    """A value saved with _write_setting, converted to the type of ``default``; ``default`` if missing or invalid."""
+    try:
+        text = Krita.instance().readSetting(SETTINGS_GROUP, name, "")
+    except (AttributeError, RuntimeError):
+        return default
+    if not text:
+        return default
+    if isinstance(default, bool):
+        return text == "true"
+    try:
+        return type(default)(float(text))
+    except ValueError:
+        return default
+
+
+def _write_setting(name, value):
+    """Saves a panel setting in Krita's settings, so it comes back the next time Krita starts."""
+    text = ("true" if value else "false") if isinstance(value, bool) else repr(value)
+    try:
+        Krita.instance().writeSetting(SETTINGS_GROUP, name, text)
+    except (AttributeError, RuntimeError):
+        pass
 
 
 def _union(a, b):
@@ -393,6 +419,24 @@ class SphereDocker(DockWidget):
         layout.addStretch(1)
         self.setWidget(root)
         self._update_buttons()
+        self._load_settings()
+
+    def _load_settings(self):
+        """Restores the panel's settings from the last session and saves them whenever they change.
+
+        The view direction is not among them: it is stored in each panorama instead.
+        """
+        self.fov.setValue(_read_setting("fov", self.fov.value()))
+        self.project_on_release.setChecked(_read_setting("projectOnRelease", self.project_on_release.isChecked()))
+        self.auto_size.setChecked(_read_setting("autoViewSize", self.auto_size.isChecked()))
+        self.view_size.setValue(_read_setting("viewSize", self.view_size.value()))
+        aspect = _read_setting("aspectRatio", self.aspect)
+        self.set_aspect(min(self.aspect_actions, key=lambda v: abs(v - aspect)))
+
+        self.fov.valueChanged.connect(lambda value: _write_setting("fov", float(value)))
+        self.project_on_release.toggled.connect(lambda on: _write_setting("projectOnRelease", on))
+        self.auto_size.toggled.connect(lambda on: _write_setting("autoViewSize", on))
+        self.view_size.valueChanged.connect(lambda value: _write_setting("viewSize", int(value)))
 
     def _build_menu(self):
         menu = QMenu(self)
@@ -441,6 +485,7 @@ class SphereDocker(DockWidget):
     def set_aspect(self, value):
         """Sets the projection's aspect ratio (width / height); the field of view stays horizontal."""
         self.aspect = value
+        _write_setting("aspectRatio", value)
         action = self.aspect_actions.get(value)
         if action is not None and not action.isChecked():
             action.setChecked(True)

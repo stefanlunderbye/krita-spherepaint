@@ -9,6 +9,7 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - Manual and README section on using SpherePaint with AI image generation (fixing poles and seams of generated panoramas, inpainting in undistorted views).
 - Aspect ratio for the projection (**⋯ → Aspect ratio**): 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16. The field of view is horizontal; the thumbnail outline and the 360° preview frame follow the ratio, and the ratio is remembered per document.
+- The panel's settings (field of view, aspect ratio, *Project when the mouse is released*, *Automatic view size* and the view size) are saved in Krita's settings and restored when Krita starts.
 
 ### Changed
 - Much faster with very large panoramas. *Project* reads only the part of the panorama the view covers and projects the layer and the reference in one pass; *Write back* and the reference refresh after it only process the painted area; the work runs on several CPU cores, and the pixel sampling itself is about twice as fast. The panel's panorama thumbnail is no longer remade by Krita from the whole image after every projection and write-back: only the changed area is redrawn, and a full refresh of an 8-bit image takes a fraction of a second. In a 16K test the computation for projecting went from about 25 s to 5–7 s, and for writing back a brush stroke (including the reference refresh) from about 25 s to under a second.

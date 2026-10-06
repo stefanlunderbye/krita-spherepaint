@@ -48,6 +48,15 @@ def plugin():
         def icon(self, name):
             return qt.QtGui.QIcon()
 
+        settings = {}  # stands in for kritarc
+
+        def readSetting(self, group, name, default):
+            return FakeKrita.settings.get((group, name), default)
+
+        def writeSetting(self, group, name, value):
+            assert isinstance(value, str)
+            FakeKrita.settings[(group, name)] = value
+
     class FakeExtension:
         def __init__(self, *args):
             pass
@@ -335,3 +344,26 @@ def test_thumbnail_is_patched_where_the_panorama_changed(plugin):
     panel._thumbnail_doc = "another document"
     assert not panel._patch_thumbnail(boxes)  # a thumbnail of another image must be remade
 
+
+def test_settings_come_back_in_the_next_session(plugin):
+    docker = plugin.pkg.docker
+    first = docker.SphereDocker()
+    first.fov.setValue(120)
+    first.aspect_actions[16 / 9].trigger()
+    first.project_on_release.setChecked(False)
+    first.auto_size.setChecked(False)
+    first.view_size.setValue(3000)
+
+    second = docker.SphereDocker()  # as after restarting Krita
+    assert second.fov.value() == 120
+    assert second.aspect == 16 / 9 and second.aspect_actions[16 / 9].isChecked()
+    assert not second.project_on_release.isChecked()
+    assert not second.auto_size.isChecked() and second.act_view_size.isEnabled()
+    assert second.view_size.value() == 3000
+
+    # Back to the defaults, so the other tests start from them.
+    second.fov.setValue(90)
+    second.set_aspect(1.0)
+    second.project_on_release.setChecked(True)
+    second.auto_size.setChecked(True)
+    second.view_size.setValue(1024)
