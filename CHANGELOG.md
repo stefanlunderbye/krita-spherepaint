@@ -6,6 +6,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-10-06
+
 ### Added
 - Manual and README section on using SpherePaint with AI image generation (fixing poles and seams of generated panoramas, inpainting in undistorted views).
 - Aspect ratio for the projection (**⋯ → Aspect ratio**): 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16. The field of view is horizontal; the thumbnail outline and the 360° preview frame follow the ratio, and the ratio is remembered per document.
@@ -59,7 +61,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - First release: docker with yaw, pitch and field of view, projection of the active layer into an undistorted perspective view, write-back of changed pixels only, flat/projection toggle, one-step undo, English and Swedish interface, plugin manual.
 
-[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.2.0...v0.3.0
