@@ -6,8 +6,13 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] – 2026-10-06
+
 ### Added
 - Undo in several steps: **Undo** takes back up to 10 write-backs per panorama, one at a time (fewer when they are very large). Undoing a write-back made from another direction projects the open view again, after asking if it has changes that haven't been written back.
+
+### Changed
+- Polished panel buttons: *Undo* and *Flat / Projection* have centred text and the lower row one height. New icons: a perspective grid for *Project*, merge-down for *Write back* (instead of a floppy disk, which suggested saving to a file), circular arrows for *Flat / Projection* and three lines for the **⋯** menu.
 
 ## [0.6.0] – 2026-10-06
 
@@ -64,7 +69,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - First release: docker with yaw, pitch and field of view, projection of the active layer into an undistorted perspective view, write-back of changed pixels only, flat/projection toggle, one-step undo, English and Swedish interface, plugin manual.
 
-[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.3.0...v0.4.0
