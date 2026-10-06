@@ -8,6 +8,7 @@ import os
 import sys
 import types
 
+import numpy as np
 import pytest
 
 from conftest import PLUGIN_DIR
@@ -196,3 +197,141 @@ def test_widened_fov_follows_the_aspect_ratio(plugin):
     assert widened_fov(90, 1600, 900, 16 / 9) == pytest.approx(90)  # the frame is the projection
     assert widened_fov(90, 1000, 1000, 16 / 9) == pytest.approx(90)  # full width, dimmed above and below
     assert widened_fov(90, 900, 900, 9 / 16) > 90  # a narrow portrait frame leaves room on the sides
+
+
+class FakeLayer:
+    """A layer (or document) whose pixels live in a NumPy array; reads must stay inside the image."""
+
+    def __init__(self, pixels):
+        self.pixels = pixels.copy()
+        self.reads = []
+
+    def width(self):
+        return self.pixels.shape[1]
+
+    def height(self):
+        return self.pixels.shape[0]
+
+    def pixelData(self, x, y, w, h):
+        assert 0 <= x and x + w <= self.width() and 0 <= y and y + h <= self.height()
+        self.reads.append(w * h)
+        return self.pixels[y:y + h, x:x + w].tobytes()
+
+    def setPixelData(self, data, x, y, w, h):
+        assert 0 <= x and x + w <= self.width() and 0 <= y and y + h <= self.height()
+        self.pixels[y:y + h, x:x + w] = np.frombuffer(bytes(data), np.uint8).reshape(h, w, -1)
+
+
+@pytest.mark.parametrize("yaw,pitch", [(0, 0), (179, 10), (-179, -20), (60, 85)])
+def test_write_back_reads_and_writes_only_the_painted_region(plugin, yaw, pitch):
+    import projection as P
+    from test_projection import H, W, crop, noise_equirect, write_back
+
+    docker = plugin.pkg.docker
+    eq = noise_equirect()
+    layer = FakeLayer(eq)
+    view = P.View(yaw, pitch, 90, 300)
+    region = P.view_region(view, W, H)
+    assert np.array_equal(docker._read_region(layer, region, W, 4, np.uint8), crop(eq, region))
+
+    img = P.equirect_to_view(eq, view)
+    painted = img.copy()
+    painted[140:160, 0:40] = (10, 200, 30, 255)  # at the left edge, so a seam view wraps
+    mask = P.change_mask(img, painted)
+    panel = docker.SphereDocker()
+    panel.session = types.SimpleNamespace(src_doc=layer, view=view, channels=4, dtype=np.uint8)
+    layer.reads.clear()
+    undo = []
+    changed = panel._write_layer_back(layer, painted, mask, undo)
+    assert np.array_equal(layer.pixels, write_back(eq, painted, mask, view))
+    assert changed > 0 and sum(layer.reads) < W * H / 20  # far less than the whole panorama
+    for _, r0, c0, old in reversed(undo):
+        docker._write(layer, old, c0, r0)
+    assert np.array_equal(layer.pixels, eq)
+
+
+def test_reference_margin_covers_wide_views(plugin):
+    import projection as P
+    margin = plugin.pkg.docker._reference_margin
+    assert margin(P.View(0, 0, 90, P.matching_view_size(8192, 90)), 8192) <= 6
+    assert margin(P.View(0, 0, 150, 1000), 4096) > margin(P.View(0, 0, 90, 1000), 4096)
+
+
+@pytest.mark.parametrize("yaw,pitch,fov", [(0, 0, 90), (179, 30, 120), (20, -80, 60)])
+def test_partial_reference_refresh_matches_a_full_one(plugin, yaw, pitch, fov):
+    import projection as P
+    from test_projection import H, W, noise_equirect, write_back
+
+    docker = plugin.pkg.docker
+    eq = noise_equirect()
+    view = P.View(yaw, pitch, fov, P.matching_view_size(W, fov))
+    before = P.equirect_to_view(eq, view)
+    painted = before.copy()
+    painted[200:230, 5:60] = (255, 0, 0, 255)
+    mask = P.change_mask(before, painted)
+    after = write_back(eq, painted, mask, view)
+
+    rect = docker._changed_rect(mask, view, docker._reference_margin(view, W))
+    region = P.view_region(view, W, H, rect)
+    from test_projection import crop
+    reference = before.copy()
+    left, top, right, bottom = rect
+    reference[top:bottom, left:right] = P.equirect_to_view(crop(after, region), view, (region[0], region[1], W, H), rect)
+    assert np.array_equal(reference, P.equirect_to_view(after, view))
+
+
+def test_thumbnail_is_patched_where_the_panorama_changed(plugin):
+    qt = plugin.qt
+    docker = plugin.pkg.docker
+
+    class FakeDoc(FakeLayer):
+        def colorModel(self):
+            return "RGBA"
+
+        def colorDepth(self):
+            return "U8"
+
+        def waitForDone(self):
+            pass
+
+        def rootNode(self):
+            return types.SimpleNamespace(uniqueId=lambda: "panorama")
+
+    def thumbnail(pixels, width=512, height=256):
+        h, w = pixels.shape[:2]
+        data = pixels.tobytes()
+        image = qt.QImage(data, w, h, w * 4, qt.QImage.Format.Format_ARGB32)
+        return image.scaled(width, height, qt.Qt.AspectRatioMode.IgnoreAspectRatio,
+                            qt.Qt.TransformationMode.SmoothTransformation).convertToFormat(qt.QImage.Format.Format_ARGB32)
+
+    qimage_to_bgra = plugin.pkg.preview.qimage_to_bgra
+    rng = np.random.default_rng(2)
+    pixels = np.zeros((1000, 2000, 4), np.uint8)
+    pixels[..., :3] = rng.integers(0, 256, 3)
+    pixels[..., 3] = 255
+    doc = FakeDoc(pixels)
+    panel = docker.SphereDocker()
+    panel._thumbnail_source = lambda: doc
+    panel._preview_image = thumbnail(doc.pixels)
+    panel._thumbnail_doc = "panorama"
+    assert panel._patch_thumbnail([])  # nothing changed: nothing to do
+
+    doc.pixels[300:420, 1900:2000] = (0, 0, 255, 255)  # a stroke at the right edge...
+    doc.pixels[300:420, 0:50] = (0, 0, 255, 255)  # ...continuing across the seam
+    boxes = docker._changed_boxes([(None, 300, 1900, np.zeros((120, 100, 4))), (None, 300, 0, np.zeros((120, 50, 4)))],
+                                  2000)
+    assert sorted(boxes) == [(0, 300, 50, 120), (1900, 300, 100, 120)]
+    assert panel._patch_thumbnail(boxes)
+    patched = qimage_to_bgra(panel._preview_image).astype(int)
+    expected = qimage_to_bgra(thumbnail(doc.pixels)).astype(int)
+    assert np.abs(patched - expected).max() <= 40  # only edge pixels differ, from rounding to whole pixels
+    assert np.abs(patched - expected).mean() < 0.2
+    assert (patched[160:200, 2:10, 0] > 200).all()  # the stroke shows on both sides of the seam
+    assert (patched[160:200, 500:510, 0] > 200).all()
+
+    quick = qimage_to_bgra(docker._quick_thumbnail(doc, 512, 256)).astype(int)
+    assert quick.shape == (256, 512, 4)
+    assert np.abs(quick - expected).mean() < 2  # two rows per thumbnail row are close to the full average
+    panel._thumbnail_doc = "another document"
+    assert not panel._patch_thumbnail(boxes)  # a thumbnail of another image must be remade
+

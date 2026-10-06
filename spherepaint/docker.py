@@ -1,5 +1,6 @@
 """Docker panel: switches between the equirectangular image (flat) and a perspective view."""
 import json
+import math
 import os
 import weakref
 
@@ -13,7 +14,8 @@ from .picker import DirectionPicker
 from .preview import PanoramaPreview
 from .qt import (
     QActionGroup, QApplication, QByteArray, QDoubleSpinBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMenu,
-    QMessageBox, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QToolButton, QVBoxLayout, QWidget,
+    QImage, QMessageBox, QPainter, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 YES, NO, CANCEL = (QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No,
@@ -110,6 +112,73 @@ def _read(node, x, y, w, h, channels, dtype):
 def _write(node, arr, x, y):
     h, w = arr.shape[:2]
     node.setPixelData(QByteArray(np.ascontiguousarray(arr).tobytes()), x, y, w, h)
+
+
+def _spans(x0, x1, width):
+    """Splits columns x0..x1, which may run past the right edge, into (image x, offset, length) pieces."""
+    spans = []
+    x = x0
+    while x < x1:
+        start = x % width
+        length = min(x1 - x, width - start)
+        spans.append((start, x - x0, length))
+        x += length
+    return spans
+
+
+def _read_region(source, region, width, channels, dtype):
+    """Pixels of a layer or document (its merged image) in a region from projection.view_region."""
+    x0, y0, x1, y1 = region
+    parts = [_read(source, start, y0, length, y1 - y0, channels, dtype) for start, _, length in _spans(x0, x1, width)]
+    return parts[0] if len(parts) == 1 else np.concatenate(parts, axis=1)
+
+
+def _changed_rect(mask, view, margin=1):
+    """Bounding box (left, top, right, bottom) of the changed view pixels, grown by ``margin``."""
+    rows = np.nonzero(mask.any(axis=1))[0]
+    cols = np.nonzero(mask.any(axis=0))[0]
+    return (max(0, int(cols[0]) - margin), max(0, int(rows[0]) - margin),
+            min(view.width, int(cols[-1]) + 1 + margin), min(view.height, int(rows[-1]) + 1 + margin))
+
+
+def _changed_boxes(undo_pixels, width):
+    """Panorama areas a write-back touched, as (x, y, w, h): one box per side of the ±180° seam."""
+    boxes = {}
+    for _, r0, c0, old in undo_pixels:
+        h, w = old.shape[:2]
+        key = c0 < width // 2
+        box = (c0, r0, c0 + w, r0 + h)
+        boxes[key] = _union(box, boxes.get(key))
+    return [(x0, y0, x1 - x0, y1 - y0) for x0, y0, x1, y1 in boxes.values()]
+
+
+def _quick_thumbnail(doc, width, height):
+    """A downscaled copy of an 8-bit RGBA document's merged image, or None for other formats.
+
+    Reads two rows per thumbnail row and lets Qt average them down, which takes a
+    fraction of a second where Document.thumbnail(), which reads every pixel, takes
+    seconds for 10K+ panoramas.
+    """
+    if doc.colorModel() != "RGBA" or doc.colorDepth() != "U8" or doc.height() < 2 * height:
+        return None
+    w, h = doc.width(), doc.height()
+    rows = np.minimum(h - 1, ((np.arange(2 * height) + 0.5) * h / (2 * height)).astype(int))
+    doc.waitForDone()
+    data = b"".join(bytes(doc.pixelData(0, int(y), w, 1)) for y in rows)  # BGRA, the layout of ARGB32
+    image = QImage(data, w, len(rows), w * 4, QImage.Format.Format_ARGB32)
+    return image.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+
+def _union(a, b):
+    return a if b is None else (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
+
+def _reference_margin(view, width):
+    """View pixels around a write-back whose reference can change: one panorama pixel
+    where the view is densest (its corners), plus the bilinear neighbours."""
+    half_diagonal = math.hypot(view.width, view.height) / 2.0
+    stretch = 1.0 + (half_diagonal / view.focal) ** 2  # 1 / cos² of the corner angle
+    return 2 + int(math.ceil(view.focal * 2.0 * math.pi / width * stretch))
 
 
 def _doc_id(doc):
@@ -227,6 +296,7 @@ class SphereDocker(DockWidget):
         self.session = None
         self._last_source_id = None  # panorama whose stored direction was last restored
         self._preview_image = None  # downscaled panorama shared with the 360° preview docker
+        self._thumbnail_doc = None  # id of the document it was made from
         self.aspect = 1.0  # projection width / height
         _DOCKERS.add(self)
 
@@ -449,13 +519,58 @@ class SphereDocker(DockWidget):
         """Updates the picker thumbnail and the 360° preview from the current panorama."""
         doc = self._thumbnail_source()
         try:
-            image = doc.thumbnail(PREVIEW_SOURCE_WIDTH, PREVIEW_SOURCE_WIDTH // 2) if doc is not None else None
+            image = None
+            if doc is not None:
+                image = (_quick_thumbnail(doc, PREVIEW_SOURCE_WIDTH, PREVIEW_SOURCE_WIDTH // 2)
+                         or doc.thumbnail(PREVIEW_SOURCE_WIDTH, PREVIEW_SOURCE_WIDTH // 2))
         except RuntimeError:  # the document was closed meanwhile
             image = None
         self._preview_image = image
+        self._thumbnail_doc = _doc_id(doc) if image is not None else None
         self.picker.setImage(image.scaled(512, 256) if image is not None else None)
         for preview in self._previews():
             preview.view.setSource(image)
+
+    def _patch_thumbnail(self, boxes):
+        """Redraws only the given panorama areas in the thumbnail and preview, instead of letting
+        Krita downscale the whole panorama again (seconds for 10K+ images). Returns False when
+        that isn't possible, so the caller makes a full thumbnail."""
+        image = self._preview_image
+        doc = self._thumbnail_source()
+        if image is None or image.isNull() or doc is None or _doc_id(doc) != self._thumbnail_doc:
+            return False
+        if not boxes:
+            return True  # nothing in the panorama changed
+        if doc.colorModel() != "RGBA" or doc.colorDepth() != "U8":
+            return False
+        width, height = doc.width(), doc.height()
+        sx, sy = image.width() / width, image.height() / height
+        try:
+            doc.waitForDone()
+            image = image.convertToFormat(QImage.Format.Format_ARGB32)
+            painter = QPainter(image)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            for x, y, w, h in boxes:
+                # Whole thumbnail pixels, and the panorama area they are made from.
+                tx0, ty0 = int(math.floor(x * sx)), int(math.floor(y * sy))
+                tx1 = min(image.width(), int(math.ceil((x + w) * sx)))
+                ty1 = min(image.height(), int(math.ceil((y + h) * sy)))
+                px0, py0 = int(round(tx0 / sx)), int(round(ty0 / sy))
+                px1, py1 = min(width, int(round(tx1 / sx))), min(height, int(round(ty1 / sy)))
+                if tx1 <= tx0 or ty1 <= ty0 or px1 <= px0 or py1 <= py0:
+                    continue
+                data = bytes(doc.pixelData(px0, py0, px1 - px0, py1 - py0))  # BGRA, the layout of ARGB32
+                part = QImage(data, px1 - px0, py1 - py0, (px1 - px0) * 4, QImage.Format.Format_ARGB32)
+                painter.drawImage(tx0, ty0, part.scaled(tx1 - tx0, ty1 - ty0, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                                       Qt.TransformationMode.SmoothTransformation))
+            painter.end()
+        except RuntimeError:  # the document was closed meanwhile
+            return False
+        self._preview_image = image
+        self.picker.setImage(image.scaled(512, 256))
+        for preview in self._previews():
+            preview.view.setSource(image)
+        return True
 
     # --- 360° preview window ------------------------------------------------
 
@@ -542,7 +657,9 @@ class SphereDocker(DockWidget):
             source = doc.nodeByName(layer.name())
             if (source is not None and source.type() == "paintlayer"
                     and source.uniqueId() != node.uniqueId()):
-                content = P.equirect_to_view(_read(source, 0, 0, w, h, channels, dtype), view)
+                region = P.view_region(view, w, h)
+                content = P.equirect_to_view(_read_region(source, region, w, channels, dtype), view,
+                                             (region[0], region[1], w, h))
                 baselines[layer.name()] = content
             else:
                 content = np.zeros((height, width, channels), dtype=dtype)
@@ -571,11 +688,13 @@ class SphereDocker(DockWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
 
-    def _done(self, text):
+    def _done(self, text, changed=None):
+        """Finishes an operation; ``changed`` lists the panorama areas (x, y, w, h) it modified, if known."""
         QApplication.restoreOverrideCursor()
         self.status.setText(text)
         self._update_buttons()
-        self._refresh_thumbnail()
+        if changed is None or not self._patch_thumbnail(changed):
+            self._refresh_thumbnail()
 
     def _fail(self, text):
         QApplication.restoreOverrideCursor()
@@ -635,10 +754,12 @@ class SphereDocker(DockWidget):
 
         self._busy(tr("Projecting…"))
         try:
-            layer_px = _read(node, 0, 0, w, h, channels, dtype)
-            projected = P.equirect_to_view(layer_px, view)
-            merged = np.frombuffer(bytes(doc.pixelData(0, 0, w, h)), dtype=dtype).reshape(h, w, channels)
-            reference = P.equirect_to_view(merged, view)
+            # Only read the part of the panorama the view covers, and project the layer and
+            # the merged image together so the view's geometry is computed once.
+            region = P.view_region(view, w, h)
+            layer_px = _read_region(node, region, w, channels, dtype)
+            merged = _read_region(doc, region, w, channels, dtype)
+            projected, reference = P.equirect_to_views([layer_px, merged], view, (region[0], region[1], w, h))
             del layer_px, merged
 
             previous = self.session if self._alive() else None
@@ -697,7 +818,8 @@ class SphereDocker(DockWidget):
         self._done(tr("View {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
                       "Paint in the layer '{layer}', then press 'Write back'.",
                       width=size, height=height, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov,
-                      layer=PAINT_LAYER))
+                      layer=PAINT_LAYER),
+                   [])  # projecting leaves the panorama unchanged
 
     # --- guide layer --------------------------------------------------------
 
@@ -926,8 +1048,12 @@ class SphereDocker(DockWidget):
                     raise LookupError(tr("The layer '{layer}' in the panorama is not a paint layer.", layer=name))
                 targets.append((existing, False) if existing is not None else (None, True))
 
+            refresh = None  # the part of the view whose reference can change
+            margin = _reference_margin(s.view, s.src_doc.width())
+            for _, _, mask in pending:
+                refresh = _union(_changed_rect(mask, s.view, margin), refresh)
             undo = {"pixels": [], "created": [], "baseline": s.baseline,
-                    "extra_baselines": dict(s.extra_baselines)}
+                    "extra_baselines": dict(s.extra_baselines), "refresh": refresh}
             touched = []
             changed = 0
             for (name, pixels, mask), (target, create) in zip(pending, targets):
@@ -944,26 +1070,32 @@ class SphereDocker(DockWidget):
             s.src_doc.refreshProjection()
             s.src_doc.setActiveNode(s.src_node)
             s.undo = undo
-            self._refresh_reference()
+            self._refresh_reference(refresh)
         except Exception as e:
             self._fail(tr("Write-back failed: {error}", error=e))
             return
         self._done(tr("Done: {count} pixels updated in {layers}.",
                       count=f"{changed:,}".replace(",", " "),
-                      layers=", ".join(f"'{t}'" for t in touched)))
+                      layers=", ".join(f"'{t}'" for t in touched)),
+                   _changed_boxes(undo["pixels"], s.src_doc.width()))
 
-    def _refresh_reference(self):
-        """Re-projects the merged panorama into the view's locked reference layer."""
+    def _refresh_reference(self, rect=None):
+        """Re-projects the merged panorama into the view's locked reference layer.
+
+        ``rect`` (left, top, right, bottom) limits it to the part of the view that can have changed.
+        """
         s = self.session
         ref = s.view_doc.nodeByName(REFERENCE_LAYER)
         if ref is None:
             return
         w, h = s.src_doc.width(), s.src_doc.height()
+        rect = rect or (0, 0, s.view.width, s.view.height)
         s.src_doc.waitForDone()  # make sure the merged image includes the write-back
-        merged = np.frombuffer(bytes(s.src_doc.pixelData(0, 0, w, h)), dtype=s.dtype).reshape(h, w, -1)
+        region = P.view_region(s.view, w, h, rect)
+        merged = _read_region(s.src_doc, region, w, s.channels, s.dtype)
         locked = ref.locked()
         ref.setLocked(False)
-        _write(ref, P.equirect_to_view(merged, s.view), 0, 0)
+        _write(ref, P.equirect_to_view(merged, s.view, (region[0], region[1], w, h), rect), rect[0], rect[1])
         ref.setLocked(locked)
         s.view_doc.refreshProjection()
 
@@ -971,20 +1103,24 @@ class SphereDocker(DockWidget):
         """Projects one view layer's changes onto a panorama layer; returns the pixel count."""
         s = self.session
         w, h = s.src_doc.width(), s.src_doc.height()
+        # Only the panorama pixels under the painted part of the view can change.
+        x0, y0, x1, y1 = P.view_region(s.view, w, h, _changed_rect(mask, s.view))
         changed = 0
-        for r0 in range(0, h, P.CHUNK_ROWS):
-            r1 = min(h, r0 + P.CHUNK_ROWS)
-            result = P.view_to_equirect_rows(painted, mask, s.view, w, h, r0, r1)
+        for r0 in range(y0, y1, P.CHUNK_ROWS):
+            r1 = min(y1, r0 + P.CHUNK_ROWS)
+            result = P.view_to_equirect_rows(painted, mask, s.view, w, h, r0, r1, x0, x1)
             if result is None:
                 continue
             weight, colour = result
             cols = np.nonzero((weight > 0).any(axis=0))[0]
             c0, c1 = int(cols[0]), int(cols[-1]) + 1
-            old = _read(target, c0, r0, c1 - c0, r1 - r0, s.channels, s.dtype)
-            wgt = weight[:, c0:c1, None]
-            new = old.astype(np.float32) * (1 - wgt) + colour[:, c0:c1] * wgt
-            _write(target, P._to_dtype(new, s.dtype), c0, r0)
-            undo_pixels.append((target, r0, c0, old))
+            for start, offset, length in _spans(x0 + c0, x0 + c1, w):
+                part = slice(c0 + offset, c0 + offset + length)
+                old = _read(target, start, r0, length, r1 - r0, s.channels, s.dtype)
+                wgt = weight[:, part, None]
+                new = old.astype(np.float32) * (1 - wgt) + colour[:, part] * wgt
+                _write(target, P._to_dtype(new, s.dtype), start, r0)
+                undo_pixels.append((target, r0, start, old))
             changed += int((weight > 0).sum())
         return changed
 
@@ -1002,6 +1138,7 @@ class SphereDocker(DockWidget):
         s.baseline = undo["baseline"]
         s.extra_baselines = undo["extra_baselines"]
         s.undo = None
-        self._refresh_reference()
+        self._refresh_reference(undo.get("refresh"))
         self._done(tr("The last write-back has been undone in the equirectangular image. "
-                      "The view is unchanged – press 'Write back' again to redo it."))
+                      "The view is unchanged – press 'Write back' again to redo it."),
+                   _changed_boxes(undo["pixels"], s.src_doc.width()))

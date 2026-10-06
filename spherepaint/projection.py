@@ -5,11 +5,29 @@ image, latitude +90° = top edge of the image. Pure NumPy with no Krita
 dependency, so the module can be tested on its own.
 """
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
 # Rows processed at a time, to keep memory use down even for 8K+ images.
 CHUNK_ROWS = 256
+# View pixels per block when projecting. NumPy releases the GIL in its loops, so
+# blocks run on several threads; smaller blocks keep each thread's memory low.
+CHUNK_PIXELS = 1 << 18
+THREADS = max(1, min(8, os.cpu_count() or 1))
+
+
+def _parallel(function, items):
+    """Calls function(item) for every item, on several threads when there is more than one."""
+    items = list(items)
+    if THREADS == 1 or len(items) < 2:
+        for item in items:
+            function(item)
+        return
+    with ThreadPoolExecutor(THREADS) as pool:
+        for _ in pool.map(function, items):  # re-raises the first error
+            pass
 
 
 class View:
@@ -74,19 +92,38 @@ def view_outline(view, samples_per_edge=16):
     return lon, lat
 
 
+# Whole pixels of these sizes in bytes are gathered as one number, which is much faster
+# than gathering each channel. Complex numbers only stand in for 16-byte blocks.
+_PIXEL_WORDS = {1: np.uint8, 2: np.uint16, 4: np.uint32, 8: np.uint64, 16: np.complex128}
+
+
+def _gather(img, rows, cols):
+    """img[rows, cols] for an (H, W, C) image and integer index arrays of equal shape."""
+    h, w, ch = img.shape
+    word = _PIXEL_WORDS.get(ch * img.dtype.itemsize)
+    if word is None or not img.flags.c_contiguous:
+        return img[rows, cols]
+    flat = img.reshape(h * w * ch).view(word)
+    return np.take(flat, rows * w + cols).view(img.dtype).reshape(rows.shape + (ch,))
+
+
 def _sample(img, sx, sy, wrap_x):
     """Bilinear sampling of img (H, W, C) at floating-point coordinates; returns float32.
 
     Krita stores alpha as the last channel in every colour model, so images with
     two or more channels are interpolated with premultiplied alpha. Otherwise the
     colour of fully transparent pixels (usually black) bleeds into the edges of
-    semi-transparent strokes as a dark halo.
+    semi-transparent strokes as a dark halo. Where the four neighbours share the
+    same alpha (opaque or empty areas) that gives the same result as plain bilinear
+    interpolation, so only the remaining pixels take the slower premultiplied path.
     """
     h, w = img.shape[:2]
-    x0 = np.floor(sx).astype(np.int64)
-    y0 = np.floor(sy).astype(np.int64)
+    x0 = np.floor(sx)
+    y0 = np.floor(sy)
     fx = (sx - x0).astype(np.float32)[..., None]
     fy = (sy - y0).astype(np.float32)[..., None]
+    x0 = x0.astype(np.intp)
+    y0 = y0.astype(np.intp)
     x1 = x0 + 1
     y1 = y0 + 1
     if wrap_x:
@@ -97,17 +134,35 @@ def _sample(img, sx, sy, wrap_x):
         np.clip(x1, 0, w - 1, out=x1)
     np.clip(y0, 0, h - 1, out=y0)
     np.clip(y1, 0, h - 1, out=y1)
-    corners = (img[y0, x0], img[y0, x1], img[y1, x0], img[y1, x1])
-    weights = ((1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy)
+    corners = (_gather(img, y0, x0), _gather(img, y0, x1), _gather(img, y1, x0), _gather(img, y1, x1))
+    gx, gy = 1 - fx, 1 - fy
+    weights = (gx * gy, fx * gy, gx * fy, fx * fy)
+    out = corners[0].astype(np.float32)
+    out *= weights[0]
+    for c, wt in zip(corners[1:], weights[1:]):
+        out += c.astype(np.float32) * wt
     if img.shape[2] < 2:
-        return sum(c.astype(np.float32) * w for c, w in zip(corners, weights))
-    alpha = np.zeros(fx.shape, dtype=np.float32)
-    premultiplied = np.zeros(fx.shape[:-1] + (img.shape[2] - 1,), dtype=np.float32)
-    for c, w in zip(corners, weights):
+        return out
+    a = [c[..., -1] for c in corners]
+    mixed = (a[0] != a[1]) | (a[0] != a[2]) | (a[0] != a[3])
+    count = int(mixed.sum())
+    if count == 0:
+        return out
+    if count > mixed.size // 4:  # mostly mixed: picking out the pixels costs more than it saves
+        return _premultiplied(corners, weights)
+    out[mixed] = _premultiplied([c[mixed] for c in corners], [wt[mixed] for wt in weights])
+    return out
+
+
+def _premultiplied(corners, weights):
+    """Bilinear interpolation with premultiplied alpha (the last channel)."""
+    alpha = np.zeros(weights[0].shape, dtype=np.float32)
+    premultiplied = np.zeros(weights[0].shape[:-1] + (corners[0].shape[-1] - 1,), dtype=np.float32)
+    for c, wt in zip(corners, weights):
         c = c.astype(np.float32)
-        a = c[..., -1:] * w
-        alpha += a
-        premultiplied += c[..., :-1] * a
+        aw = c[..., -1:] * wt
+        alpha += aw
+        premultiplied += c[..., :-1] * aw
     colour = np.divide(premultiplied, alpha, out=np.zeros_like(premultiplied), where=alpha > 0)
     return np.concatenate([colour, alpha], axis=-1)
 
@@ -119,51 +174,130 @@ def _to_dtype(values, dtype):
     return values.astype(dtype)
 
 
-def equirect_to_view(equirect, view):
-    """Computes the perspective view (height, width, C) from an equirectangular image (H, W, C)."""
-    h, w, c = equirect.shape
-    vw, vh = view.width, view.height
-    out = np.empty((vh, vw, c), dtype=equirect.dtype)
-    u = np.arange(vw, dtype=np.float64) + 0.5 - vw / 2.0
-    for r0 in range(0, vh, CHUNK_ROWS):
-        r1 = min(vh, r0 + CHUNK_ROWS)
-        v = -(np.arange(r0, r1, dtype=np.float64) + 0.5 - vh / 2.0)
-        cx, cy = np.meshgrid(u, v)
-        cz = np.full_like(cx, view.focal)
-        norm = np.sqrt(cx * cx + cy * cy + cz * cz)
-        wx, wy, wz = view.cam_to_world(cx / norm, cy / norm, cz / norm)
-        lon = np.arctan2(wx, wz)
-        lat = np.arcsin(np.clip(wy, -1.0, 1.0))
-        sx = (lon + math.pi) / (2 * math.pi) * w - 0.5
-        sy = (math.pi / 2 - lat) / math.pi * h - 0.5
-        out[r0:r1] = _to_dtype(_sample(equirect, sx, sy, wrap_x=True), equirect.dtype)
-    return out
+def _equirect_coords(view, left, right, r0, r1, width, height):
+    """Equirectangular sample coordinates (sx, sy) of view columns left..right and rows r0..r1."""
+    u = np.arange(left, right, dtype=np.float64) + 0.5 - view.width / 2.0
+    v = -(np.arange(r0, r1, dtype=np.float64) + 0.5 - view.height / 2.0)
+    cx, cy = np.meshgrid(u, v)
+    cz = np.full_like(cx, view.focal)
+    norm = np.sqrt(cx * cx + cy * cy + cz * cz)
+    wx, wy, wz = view.cam_to_world(cx / norm, cy / norm, cz / norm)
+    sx = (np.arctan2(wx, wz) + math.pi) / (2 * math.pi) * width - 0.5
+    sy = (math.pi / 2 - np.arcsin(np.clip(wy, -1.0, 1.0))) / math.pi * height - 0.5
+    return sx, sy
+
+
+def equirect_to_views(images, view, origin=None, rect=None):
+    """Projects several equirectangular images of the same size into the view in one pass.
+
+    ``origin`` = (x0, y0, width, height) says that the images are a crop starting at
+    column x0 and row y0 of a width×height panorama (see ``view_region``); without it
+    they are the whole panorama. ``rect`` = (left, top, right, bottom) renders only
+    that part of the view. Returns one (rows, columns, C) image per input.
+    """
+    h, w = images[0].shape[:2]
+    x0, y0, full_w, full_h = origin or (0, 0, w, h)
+    left, top, right, bottom = rect or (0, 0, view.width, view.height)
+    wrap = w >= full_w
+    outs = [np.empty((bottom - top, right - left, img.shape[2]), dtype=img.dtype) for img in images]
+    rows = max(1, CHUNK_PIXELS // max(1, right - left))
+
+    def block(r0):
+        r1 = min(bottom, r0 + rows)
+        sx, sy = _equirect_coords(view, left, right, r0, r1, full_w, full_h)
+        sy -= y0
+        if wrap:
+            sx -= x0
+        else:  # a crop that may cross the seam: its columns continue past the right edge
+            sx = (sx - x0 + 1.0) % full_w - 1.0
+        for img, out in zip(images, outs):
+            out[r0 - top:r1 - top] = _to_dtype(_sample(img, sx, sy, wrap_x=wrap), img.dtype)
+
+    _parallel(block, range(top, bottom, rows))
+    return outs
+
+
+def equirect_to_view(equirect, view, origin=None, rect=None):
+    """Computes the perspective view (height, width, C) from an equirectangular image (H, W, C).
+
+    ``origin`` and ``rect`` work as in ``equirect_to_views``.
+    """
+    return equirect_to_views([equirect], view, origin, rect)[0]
 
 
 def render_perspective(equirect, yaw_deg, pitch_deg, fov_deg, width, height):
     """A perspective view of any size, for previews; ``fov_deg`` is the horizontal field of view."""
     view = View(yaw_deg, pitch_deg, fov_deg, width, height)
-    focal = view.focal
     h, w = equirect.shape[:2]
-    cx, cy = np.meshgrid(np.arange(width, dtype=np.float64) + 0.5 - width / 2.0,
-                         -(np.arange(height, dtype=np.float64) + 0.5 - height / 2.0))
-    cz = np.full_like(cx, focal)
-    norm = np.sqrt(cx * cx + cy * cy + cz * cz)
-    wx, wy, wz = view.cam_to_world(cx / norm, cy / norm, cz / norm)
-    sx = (np.arctan2(wx, wz) + math.pi) / (2 * math.pi) * w - 0.5
-    sy = (math.pi / 2 - np.arcsin(np.clip(wy, -1.0, 1.0))) / math.pi * h - 0.5
+    sx, sy = _equirect_coords(view, 0, width, 0, height, w, h)
     return _to_dtype(_sample(equirect, sx, sy, wrap_x=True), equirect.dtype)
 
 
-def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
-    """Projects the view back onto equirectangular rows r0..r1.
+def view_region(view, width, height, rect=None, samples_per_edge=128):
+    """The part of a width×height panorama that a view samples, as (x0, y0, x1, y1).
 
-    Returns (weight, colour) for the rows, where weight (rows, width) is 0
-    wherever the view changed nothing and colour (rows, width, C) is float32.
-    Returns None if the rows are not affected at all, so the caller can skip them.
+    ``rect`` = (left, top, right, bottom) in view pixels limits it to part of the view,
+    such as the painted area. Columns may run past the right edge (x1 > width), in
+    which case the region wraps around the ±180° seam; a region covering every
+    longitude is (0, y0, width, y1). The bounds include the neighbours that bilinear
+    sampling reads, so a crop of the region projects exactly like the whole image.
+    """
+    left, top, right, bottom = rect or (0, 0, view.width, view.height)
+    # Walk the rectangle's border on the image plane (pixel edges, not centres).
+    t = np.linspace(0.0, 1.0, samples_per_edge, endpoint=False)
+    u = np.concatenate([left + (right - left) * t, np.full_like(t, right),
+                        right - (right - left) * t, np.full_like(t, left)])
+    v = np.concatenate([np.full_like(t, top), top + (bottom - top) * t,
+                        np.full_like(t, bottom), bottom - (bottom - top) * t])
+    cx = u - view.width / 2.0
+    cy = -(v - view.height / 2.0)
+    norm = np.sqrt(cx * cx + cy * cy + view.focal * view.focal)
+    wx, wy, wz = view.cam_to_world(cx / norm, cy / norm, view.focal / norm)
+    lon = np.unwrap(np.arctan2(wx, wz))
+    lat = np.arcsin(np.clip(wy, -1.0, 1.0))
+    sx = (lon + math.pi) / (2 * math.pi) * width - 0.5
+    sy = (math.pi / 2 - lat) / math.pi * height - 0.5
+
+    # Neither latitude nor longitude has an extreme inside the rectangle unless it
+    # contains a pole, so the border gives the bounds. The margin covers the curve
+    # between border samples and the bilinear neighbours.
+    pad = 3
+    y0 = max(0, int(math.floor(sy.min())) - pad)
+    y1 = min(height, int(math.ceil(sy.max())) + pad + 1)
+    full_width = False
+    for pole in (1.0, -1.0):
+        px, py, pz = view.world_to_cam(0.0, pole, 0.0)
+        if pz > 0:
+            pu = view.focal * px / pz + view.width / 2.0
+            pv = -view.focal * py / pz + view.height / 2.0
+            if left <= pu <= right and top <= pv <= bottom:
+                full_width = True
+                if pole > 0:
+                    y0 = 0
+                else:
+                    y1 = height
+    # Longitude is monotonic along each edge (a great circle), so its extremes are at
+    # samples. A border passing right next to a pole makes it jump; then take every column.
+    full_width = full_width or bool(np.abs(np.diff(lon)).max() > math.pi / 4)
+    x0 = int(math.floor(sx.min())) - pad
+    x1 = int(math.ceil(sx.max())) + pad + 1
+    if full_width or x1 - x0 >= width:
+        return 0, y0, width, y1
+    shift = (x0 // width) * width
+    return x0 - shift, y0, x1 - shift, y1
+
+
+def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1, c0=0, c1=None):
+    """Projects the view back onto equirectangular rows r0..r1 (and columns c0..c1).
+
+    Returns (weight, colour) for that block, where weight (rows, columns) is 0
+    wherever the view changed nothing and colour (rows, columns, C) is float32.
+    Columns may run past the right edge to wrap around the seam (see ``view_region``).
+    Returns None if the block is not affected at all, so the caller can skip it.
     """
     vw, vh = view.width, view.height
-    x = (np.arange(width, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
+    c1 = width if c1 is None else c1
+    x = (np.arange(c0, c1, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
     y = math.pi / 2 - (np.arange(r0, r1, dtype=np.float64) + 0.5) / height * math.pi
     lon, lat = np.meshgrid(x, y)
     clat = np.cos(lat)
@@ -205,8 +339,10 @@ def cube_to_equirect(faces, width, height):
     channels = faces[0][1].shape[2]
     out = np.zeros((height, width, channels), dtype=dtype)
     x = (np.arange(width, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
-    for r0 in range(0, height, CHUNK_ROWS):
-        r1 = min(height, r0 + CHUNK_ROWS)
+    rows = max(1, CHUNK_PIXELS // width)
+
+    def block(r0):
+        r1 = min(height, r0 + rows)
         y = math.pi / 2 - (np.arange(r0, r1, dtype=np.float64) + 0.5) / height * math.pi
         lon, lat = np.meshgrid(x, y)
         clat = np.cos(lat)
@@ -224,6 +360,8 @@ def cube_to_equirect(faces, width, height):
             v = -focal * cy[on_face] / cz[on_face] + n / 2.0 - 0.5
             chunk[on_face] = _to_dtype(_sample(img, u, v, wrap_x=False), dtype)
             done |= on_face
+
+    _parallel(block, range(0, height, rows))
     return out
 
 

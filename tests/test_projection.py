@@ -207,3 +207,85 @@ def test_matching_view_size_is_clamped():
     assert P.matching_view_size(100, 90) == 256
     assert P.matching_view_size(10 ** 6, 150) == 8192
     assert P.matching_view_size(8192, 90) == round(8192 / math.pi)
+
+
+def noise_equirect(width=W, height=H, seed=3):
+    """Random colours with partly transparent patches: any pixel read from outside a region shows."""
+    rng = np.random.default_rng(seed)
+    eq = rng.integers(0, 256, (height, width, 4), dtype=np.uint8)
+    eq[..., 3] = 255
+    eq[rng.random((height, width)) < 0.1, 3] = rng.integers(0, 255)
+    return eq
+
+
+def crop(eq, region):
+    """The region (x0, y0, x1, y1) of eq, continuing across the seam when x1 > width."""
+    x0, y0, x1, y1 = region
+    return eq[y0:y1].take(np.arange(x0, x1) % eq.shape[1], axis=1)
+
+
+VIEWS = [(0, 0, 90, 1, None), (178, 5, 70, 1, None), (-179, -30, 100, 16 / 9, None), (45, 80, 60, 1, None),
+         (10, 87, 90, 3 / 4, None), (-120, -89, 90, 1, None), (90, 60, 120, 9 / 16, None),
+         (179, 0, 90, 1, (300, 120, 360, 200)), (0, 75, 90, 1, (0, 0, 40, 30)), (30, -10, 50, 1, (10, 10, 12, 11))]
+
+
+@pytest.mark.parametrize("yaw,pitch,fov,aspect,rect", VIEWS)
+def test_projecting_from_the_view_region_matches_the_whole_panorama(yaw, pitch, fov, aspect, rect):
+    eq = noise_equirect()
+    view = P.View(yaw, pitch, fov, 400, P.view_height(400, aspect))
+    region = P.view_region(view, W, H, rect)
+    x0, y0, x1, y1 = region
+    assert 0 <= x0 < W and x0 < x1 <= x0 + W and 0 <= y0 < y1 <= H
+    expected = P.equirect_to_view(eq, view, rect=rect)
+    assert np.array_equal(P.equirect_to_view(crop(eq, region), view, (x0, y0, W, H), rect), expected)
+    if rect is None:
+        assert np.array_equal(expected, P.equirect_to_view(eq, view))
+
+
+def test_view_region_is_small_for_ordinary_views():
+    x0, y0, x1, y1 = P.view_region(P.View(0, 0, 90, 1000), W, H)
+    assert (x1 - x0) * (y1 - y0) < W * H / 6  # a 90° view covers about an eighth of the panorama
+    x0, y0, x1, _ = P.view_region(P.View(0, 70, 90, 1000), W, H)
+    assert (x0, y0, x1) == (0, 0, W)  # the north pole: all longitudes, from the top row
+
+
+def test_projecting_several_images_at_once():
+    eq = noise_equirect()
+    view = P.View(40, 20, 80, 300)
+    a, b = P.equirect_to_views([eq, eq[..., :1].copy()], view)
+    assert np.array_equal(a, P.equirect_to_view(eq, view))
+    assert np.array_equal(b, P.equirect_to_view(eq[..., :1].copy(), view))
+
+
+@pytest.mark.parametrize("yaw,pitch,fov,aspect,rect", VIEWS)
+def test_write_back_limited_to_the_painted_region_matches_the_full_scan(yaw, pitch, fov, aspect, rect):
+    eq = noise_equirect()
+    view = P.View(yaw, pitch, fov, 400, P.view_height(400, aspect))
+    img = P.equirect_to_view(eq, view)
+    painted = img.copy()
+    left, top, right, bottom = rect or (150, 100, 260, 190)
+    bottom = min(bottom, view.height)
+    painted[top:bottom, left:right] = (10, 200, 30, 255)
+    mask = P.change_mask(img, painted)
+    full = write_back(eq, painted, mask, view)
+
+    rows, cols = np.nonzero(mask.any(axis=1))[0], np.nonzero(mask.any(axis=0))[0]
+    painted_rect = (max(0, cols[0] - 1), max(0, rows[0] - 1),
+                    min(view.width, cols[-1] + 2), min(view.height, rows[-1] + 2))
+    x0, y0, x1, y1 = P.view_region(view, W, H, painted_rect)
+    out = eq.copy()
+    result = P.view_to_equirect_rows(painted, mask, view, W, H, y0, y1, x0, x1)
+    weight, colour = result
+    columns = np.arange(x0, x1) % W
+    block = out[y0:y1][:, columns].astype(np.float32)
+    out[y0:y1, columns] = P._to_dtype(block * (1 - weight[..., None]) + colour * weight[..., None], np.uint8)
+    assert np.array_equal(out, full)
+
+
+@pytest.mark.parametrize("dtype,channels", [(np.uint8, 4), (np.uint16, 4), (np.float16, 4), (np.float32, 4),
+                                            (np.uint8, 2), (np.uint8, 5), (np.float32, 1)])
+def test_whole_pixel_gather_matches_per_channel_indexing(dtype, channels):
+    rng = np.random.default_rng(5)
+    img = (rng.random((20, 30, channels)) * 200).astype(dtype)
+    rows, cols = rng.integers(0, 20, (7, 9)), rng.integers(0, 30, (7, 9))
+    assert np.array_equal(P._gather(img, rows, cols), img[rows, cols])

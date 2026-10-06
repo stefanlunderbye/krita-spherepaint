@@ -36,6 +36,7 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Projection aspect ratio 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16 (the field of view is horizontal)
 - Projects the active paint layer into a separate view document, with the merged image as a locked reference layer
 - Writes back only the pixels you changed – the rest of the image is never resampled
+- Fast with very large panoramas (16K and up): only the part the view covers is read, write-back only touches the painted area, and the work is spread over several CPU cores
 - Toggle between the flat equirectangular image and the projection
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
 - Several layers: extra layers in the view are written back to same-named panorama layers
