@@ -116,6 +116,40 @@ def test_cube_faces_tile_the_sphere():
     assert face_at(44, 0) == "front" and face_at(46, 0) == "right"
 
 
+@pytest.mark.parametrize("aspect", [16 / 9, 4 / 3, 3 / 4, 9 / 16])
+def test_rectangular_view_round_trip(aspect):
+    eq = gradient_equirect()
+    width = 300
+    view = P.View(30, 10, 90, width, P.view_height(width, aspect))
+    img = P.equirect_to_view(eq, view)
+    assert img.shape == (view.height, width, 4)
+    painted = img.copy()
+    cy, cx = view.height // 2, width // 2
+    painted[cy - 6:cy + 6, cx - 6:cx + 6] = (10, 20, 30, 255)
+    out = write_back(eq, painted, P.change_mask(img, painted), view)
+    assert tuple(out[equirect_pixel(30, 10)][:3]) == (10, 20, 30)
+
+
+def test_aspect_keeps_horizontal_fov_and_scales_vertical():
+    wide = P.View(0, 0, 90, 320, 180)
+    lon, lat = P.view_outline(wide, samples_per_edge=8)
+    assert lon.max() == pytest.approx(45, abs=0.5)  # horizontal field of view unchanged
+    expected_half_v = math.degrees(math.atan(math.tan(math.radians(45)) * 180 / 320))
+    assert lat.max() == pytest.approx(expected_half_v, abs=0.5)  # vertical follows the aspect
+
+
+def test_rectangular_preview_matches_the_projection():
+    eq = gradient_equirect()
+    view = P.View(-60, 5, 100, 240, 135)
+    assert np.array_equal(P.render_perspective(eq, -60, 5, 100, 240, 135), P.equirect_to_view(eq, view))
+
+
+def test_view_height_from_aspect():
+    assert P.view_height(1600, 16 / 9) == 900
+    assert P.view_height(900, 9 / 16) == 1600
+    assert P.view_height(10, 16 / 9) == 16  # never degenerate
+
+
 def test_preview_matches_the_projection_for_square_views():
     eq = gradient_equirect()
     view = P.View(40, -15, 80, 200)

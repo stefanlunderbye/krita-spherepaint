@@ -8,6 +8,7 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ### Added
 - Manual and README section on using SpherePaint with AI image generation (fixing poles and seams of generated panoramas, inpainting in undistorted views).
+- Aspect ratio for the projection (**⋯ → Aspect ratio**): 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16. The field of view is horizontal; the thumbnail outline and the 360° preview frame follow the ratio, and the ratio is remembered per document.
 
 ## [0.5.0] – 2026-10-04
 

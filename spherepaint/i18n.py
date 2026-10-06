@@ -27,6 +27,7 @@ SV = {
     "Field of view": "Synfält (FOV)",
     "Click or drag to choose the direction; scroll to change the field of view":
         "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
+    "Aspect ratio": "Proportioner",
     "Project when the mouse is released": "Projicera när musknappen släpps",
     "SpherePaint: Project view": "SpherePaint: Projicera vy",
     "SpherePaint: Write back to sphere": "SpherePaint: Skriv tillbaka till sfären",
@@ -122,9 +123,9 @@ SV = {
         "Bilden är {w}×{h}, inte 2:1. Equirect-bilder brukar vara 2:1. Fortsätta ändå?",
     "Projecting…": "Projicerar…",
     "Projection failed: {error}": "Projektionen misslyckades: {error}",
-    "View {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
+    "View {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
     "Paint in the layer '{layer}', then press 'Write back'.":
-        "Vy {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
+        "Vy {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
         "Måla i lagret '{layer}', tryck sedan 'Skriv tillbaka'.",
     "No active projection. Press 'Project view' first.":
         "Ingen aktiv projektion. Tryck 'Projicera vy' först.",

@@ -20,10 +20,10 @@
 
 <h2>360° preview</h2>
 <p><strong>⋯ → Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked in the <strong>⋯</strong> menu).</p>
-<p>The area inside the yellow frame is exactly what <strong>Project</strong> will show; in a non-square window the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
+<p>The area inside the yellow frame is exactly what <strong>Project</strong> will show; when the window has another shape than the projection, the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
 
 <h2>Remembered direction</h2>
-<p>Every projection stores its yaw, pitch and field of view in the panorama document. When you switch back to that panorama, or open the saved <em>.kra</em> file later, the panel restores them, so you continue where you left off.</p>
+<p>Every projection stores its yaw, pitch, field of view and aspect ratio in the panorama document. When you switch back to that panorama, or open the saved <em>.kra</em> file later, the panel restores them, so you continue where you left off.</p>
 
 <h2>Several layers</h2>
 <p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
@@ -57,6 +57,7 @@
 <h2>Tips</h2>
 <ul>
 <li><em>Automatic view size</em> (in the <strong>⋯</strong> menu, on by default) gives the view the same pixel density as the equirectangular image at its centre. Turn it off and use <em>View size…</em> for more detail.</li>
+<li><em>Aspect ratio</em> (in the <strong>⋯</strong> menu) makes the view 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16. The field of view is always horizontal, so a wide ratio shows less above and below, and a tall ratio more. The outline in the thumbnail and the frame in the 360° preview follow the ratio.</li>
 <li>A field of view of 60–100° gives little distortion at the edges of the view. Use a narrower field of view near the poles.</li>
 <li>Only one <em>Sphere view</em> is kept open. Projecting again updates it, or replaces it (closing the old one) when the view size or the panorama changes.</li>
 <li>If you project a new direction while the view has changes that have not been written back, SpherePaint asks whether to write them back first; otherwise they are discarded.</li>

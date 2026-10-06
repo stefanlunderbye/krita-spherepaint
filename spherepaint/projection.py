@@ -13,14 +13,19 @@ CHUNK_ROWS = 256
 
 
 class View:
-    """A camera at the centre of the sphere: yaw, pitch and field of view in degrees."""
+    """A camera at the centre of the sphere: yaw, pitch and horizontal field of view in degrees.
 
-    def __init__(self, yaw_deg, pitch_deg, fov_deg, size):
+    The image is ``size`` pixels wide and ``height`` pixels high (square when
+    ``height`` is omitted); the vertical field of view follows from the aspect ratio.
+    """
+
+    def __init__(self, yaw_deg, pitch_deg, fov_deg, size, height=None):
         self.yaw = math.radians(yaw_deg)
         self.pitch = math.radians(pitch_deg)
         self.fov = math.radians(fov_deg)
-        self.size = int(size)
-        self.focal = (self.size / 2.0) / math.tan(self.fov / 2.0)
+        self.size = self.width = int(size)
+        self.height = int(height) if height else self.width
+        self.focal = (self.width / 2.0) / math.tan(self.fov / 2.0)
 
     def cam_to_world(self, x, y, z):
         cp, sp = math.cos(self.pitch), math.sin(self.pitch)
@@ -43,6 +48,11 @@ def matching_view_size(equirect_width, fov_deg):
     return int(min(8192, max(256, round(n))))
 
 
+def view_height(width, aspect):
+    """Height in pixels of a view ``width`` pixels wide with aspect ratio ``aspect`` (width / height)."""
+    return max(16, int(round(width / aspect)))
+
+
 def view_outline(view, samples_per_edge=16):
     """The view's border as (longitude, latitude) in degrees, walking around its edges.
 
@@ -50,11 +60,13 @@ def view_outline(view, samples_per_edge=16):
     """
     t = np.linspace(-1.0, 1.0, samples_per_edge, endpoint=False)
     ones = np.ones_like(t)
-    # Square image plane at distance 1; half-width tan(fov/2). Walk top, right, bottom, left.
+    # Image plane at distance 1; half-width tan(fov/2), half-height scaled by the aspect.
+    # Walk top, right, bottom, left.
     u = np.concatenate([t, ones, -t, -ones])
     v = np.concatenate([ones, -t, -ones, t])
-    half = math.tan(view.fov / 2.0)
-    x, y, z = u * half, v * half, np.ones_like(u)
+    half_w = math.tan(view.fov / 2.0)
+    half_h = half_w * view.height / view.width
+    x, y, z = u * half_w, v * half_h, np.ones_like(u)
     norm = np.sqrt(x * x + y * y + z * z)
     wx, wy, wz = view.cam_to_world(x / norm, y / norm, z / norm)
     lon = np.degrees(np.arctan2(wx, wz))
@@ -108,14 +120,14 @@ def _to_dtype(values, dtype):
 
 
 def equirect_to_view(equirect, view):
-    """Computes the perspective view (size, size, C) from an equirectangular image (H, W, C)."""
+    """Computes the perspective view (height, width, C) from an equirectangular image (H, W, C)."""
     h, w, c = equirect.shape
-    n = view.size
-    out = np.empty((n, n, c), dtype=equirect.dtype)
-    u = np.arange(n, dtype=np.float64) + 0.5 - n / 2.0
-    for r0 in range(0, n, CHUNK_ROWS):
-        r1 = min(n, r0 + CHUNK_ROWS)
-        v = -(np.arange(r0, r1, dtype=np.float64) + 0.5 - n / 2.0)
+    vw, vh = view.width, view.height
+    out = np.empty((vh, vw, c), dtype=equirect.dtype)
+    u = np.arange(vw, dtype=np.float64) + 0.5 - vw / 2.0
+    for r0 in range(0, vh, CHUNK_ROWS):
+        r1 = min(vh, r0 + CHUNK_ROWS)
+        v = -(np.arange(r0, r1, dtype=np.float64) + 0.5 - vh / 2.0)
         cx, cy = np.meshgrid(u, v)
         cz = np.full_like(cx, view.focal)
         norm = np.sqrt(cx * cx + cy * cy + cz * cz)
@@ -130,8 +142,8 @@ def equirect_to_view(equirect, view):
 
 def render_perspective(equirect, yaw_deg, pitch_deg, fov_deg, width, height):
     """A perspective view of any size, for previews; ``fov_deg`` is the horizontal field of view."""
-    view = View(yaw_deg, pitch_deg, fov_deg, width)
-    focal = (width / 2.0) / math.tan(view.fov / 2.0)
+    view = View(yaw_deg, pitch_deg, fov_deg, width, height)
+    focal = view.focal
     h, w = equirect.shape[:2]
     cx, cy = np.meshgrid(np.arange(width, dtype=np.float64) + 0.5 - width / 2.0,
                          -(np.arange(height, dtype=np.float64) + 0.5 - height / 2.0))
@@ -150,7 +162,7 @@ def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
     wherever the view changed nothing and colour (rows, width, C) is float32.
     Returns None if the rows are not affected at all, so the caller can skip them.
     """
-    n = view.size
+    vw, vh = view.width, view.height
     x = (np.arange(width, dtype=np.float64) + 0.5) / width * 2 * math.pi - math.pi
     y = math.pi / 2 - (np.arange(r0, r1, dtype=np.float64) + 0.5) / height * math.pi
     lon, lat = np.meshgrid(x, y)
@@ -160,9 +172,9 @@ def view_to_equirect_rows(view_img, mask, view, width, height, r0, r1):
     if not front.any():
         return None
     cz_safe = np.where(front, cz, 1.0)
-    u = view.focal * cx / cz_safe + n / 2.0 - 0.5
-    v = -view.focal * cy / cz_safe + n / 2.0 - 0.5
-    inside = front & (u >= 0) & (u <= n - 1) & (v >= 0) & (v <= n - 1)
+    u = view.focal * cx / cz_safe + vw / 2.0 - 0.5
+    v = -view.focal * cy / cz_safe + vh / 2.0 - 0.5
+    inside = front & (u >= 0) & (u <= vw - 1) & (v >= 0) & (v <= vh - 1)
     if not inside.any():
         return None
     weight = np.zeros(lon.shape, dtype=np.float32)

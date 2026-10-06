@@ -1,8 +1,8 @@
 """360° preview: look around the panorama by dragging, like a 360° viewer.
 
-The central square shows exactly what the projection will show (same direction
-and field of view); in a non-square window the rest of the panorama around it is
-shown dimmed. Rendered from a downscaled copy of the panorama so it keeps up
+The framed rectangle in the middle shows exactly what the projection will show
+(same direction, field of view and aspect ratio); when the window has another
+shape the rest of the panorama around it is shown dimmed. Rendered from a downscaled copy of the panorama so it keeps up
 with the mouse. No Krita dependency – the docker that hosts it lives in docker.py.
 """
 import math
@@ -25,10 +25,16 @@ def qimage_to_bgra(image):
     return rows[:, :image.width() * 4].reshape(image.height(), image.width(), 4).copy()
 
 
-def widened_fov(fov_deg, width, height):
-    """Horizontal field of view that keeps a ``fov_deg`` square in the middle of a width×height frame."""
-    side = min(width, height)
-    focal = (side / 2.0) / math.tan(math.radians(fov_deg) / 2.0)
+def projection_rect(width, height, aspect=1.0):
+    """(width, height) of the largest ``aspect`` rectangle that fits in a width×height frame."""
+    rect_w = min(float(width), height * aspect)
+    return rect_w, rect_w / aspect
+
+
+def widened_fov(fov_deg, width, height, aspect=1.0):
+    """Horizontal field of view of a width×height frame whose centred projection rectangle spans ``fov_deg``."""
+    rect_w = projection_rect(width, height, aspect)[0]
+    focal = (rect_w / 2.0) / math.tan(math.radians(fov_deg) / 2.0)
     return min(MAX_WIDE_FOV, math.degrees(2.0 * math.atan((width / 2.0) / focal)))
 
 
@@ -47,6 +53,7 @@ class PanoramaPreview(QWidget):
         super().__init__(parent)
         self._source = None  # BGRA array of the downscaled panorama
         self._yaw, self._pitch, self._fov = 0.0, 0.0, 90.0
+        self._aspect = 1.0
         self._frame = None  # (QImage, backing bytes, size) cache for the current view
         self._drag_start = None
         self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -58,9 +65,10 @@ class PanoramaPreview(QWidget):
         self._frame = None
         self.update()
 
-    def setView(self, yaw, pitch, fov):
-        if (yaw, pitch, fov) != (self._yaw, self._pitch, self._fov):
-            self._yaw, self._pitch, self._fov = yaw, pitch, fov
+    def setView(self, yaw, pitch, fov, aspect=None):
+        aspect = self._aspect if aspect is None else aspect
+        if (yaw, pitch, fov, aspect) != (self._yaw, self._pitch, self._fov, self._aspect):
+            self._yaw, self._pitch, self._fov, self._aspect = yaw, pitch, fov, aspect
             self._frame = None
             self.update()
 
@@ -75,7 +83,7 @@ class PanoramaPreview(QWidget):
         w, h = max(1, self.width()), max(1, self.height())
         scale = min(1.0, RENDER_MAX / max(w, h))
         rw, rh = max(16, int(w * scale)), max(16, int(h * scale))
-        fov = widened_fov(self._fov, rw, rh)
+        fov = widened_fov(self._fov, rw, rh, self._aspect)
         pixels = P.render_perspective(self._source, self._yaw, self._pitch, fov, rw, rh).tobytes()
         image = QImage(pixels, rw, rh, rw * 4, QImage.Format.Format_ARGB32)
         return image, pixels  # keep the buffer alive as long as the QImage
@@ -92,19 +100,17 @@ class PanoramaPreview(QWidget):
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.drawImage(0, 0, self._frame[0].scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio,
                                                 Qt.TransformationMode.SmoothTransformation))
-        if w != h:
-            # Dim what lies outside the projection and frame the projected square.
-            side = min(w, h)
-            x0, y0 = (w - side) // 2, (h - side) // 2
+        rect_w, rect_h = (int(round(v)) for v in projection_rect(w, h, self._aspect))
+        if abs(rect_w - w) > 1 or abs(rect_h - h) > 1:
+            # Dim what lies outside the projection and frame the projected rectangle.
+            x0, y0 = (w - rect_w) // 2, (h - rect_h) // 2
             shade = QColor(0, 0, 0, 110)
-            if w > h:
-                p.fillRect(0, 0, x0, h, shade)
-                p.fillRect(x0 + side, 0, w - x0 - side, h, shade)
-            else:
-                p.fillRect(0, 0, w, y0, shade)
-                p.fillRect(0, y0 + side, w, h - y0 - side, shade)
+            p.fillRect(0, 0, w, y0, shade)
+            p.fillRect(0, y0 + rect_h, w, h - y0 - rect_h, shade)
+            p.fillRect(0, y0, x0, rect_h, shade)
+            p.fillRect(x0 + rect_w, y0, w - x0 - rect_w, rect_h, shade)
             p.setPen(QPen(QColor(255, 210, 60, 200), 1.5))
-            p.drawRect(x0, y0, side - 1, side - 1)
+            p.drawRect(x0, y0, rect_w - 1, rect_h - 1)
         p.end()
 
     def mousePressEvent(self, event):
@@ -117,7 +123,7 @@ class PanoramaPreview(QWidget):
             return
         start, yaw0, pitch0 = self._drag_start
         delta = event_pos(event) - start
-        degrees_per_pixel = self._fov / max(1, min(self.width(), self.height()))
+        degrees_per_pixel = self._fov / max(1.0, projection_rect(self.width(), self.height(), self._aspect)[0])
         # Grab-and-drag: moving the mouse right turns the view left, like a 360° viewer.
         yaw = (yaw0 - delta.x() * degrees_per_pixel + 180.0) % 360.0 - 180.0
         pitch = max(-90.0, min(90.0, pitch0 + delta.y() * degrees_per_pixel))

@@ -24,6 +24,7 @@ class DirectionPicker(QWidget):
         self._yaw = 0.0
         self._pitch = 0.0
         self._fov = 90.0
+        self._aspect = 1.0
         self._dragging = False
         self.setMouseTracking(False)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -38,8 +39,8 @@ class DirectionPicker(QWidget):
         self._image = image if isinstance(image, QImage) and not image.isNull() else None
         self.update()
 
-    def setView(self, yaw, pitch, fov):
-        self._yaw, self._pitch, self._fov = yaw, pitch, fov
+    def setView(self, yaw, pitch, fov, aspect=1.0):
+        self._yaw, self._pitch, self._fov, self._aspect = yaw, pitch, fov, aspect
         self.update()
 
     # --- geometry -----------------------------------------------------------
@@ -92,7 +93,8 @@ class DirectionPicker(QWidget):
         p.drawLine(x0, int(y), x0 + rw, int(y))
 
         # View outline; split where it wraps across the ±180° seam.
-        lon, lat = P.view_outline(P.View(self._yaw, self._pitch, self._fov, 2))
+        lon, lat = P.view_outline(P.View(self._yaw, self._pitch, self._fov, 1000,
+                                                   P.view_height(1000, self._aspect)))
         path = QPainterPath()
         pts = [self._to_widget(a, b) for a, b in zip(lon, lat)]
         pts.append(pts[0])

@@ -158,6 +158,11 @@ def test_preview_docker_follows_the_docker_in_the_same_window(plugin):
     preview.view.fovStep.emit(-2)
     assert main.fov.value() == 80.0
 
+    main.aspect_actions[16 / 9].trigger()
+    assert main.aspect == 16 / 9 and main.aspect_actions[16 / 9].isChecked()
+    assert not main.aspect_actions[1.0].isChecked()  # the ratios are exclusive
+    assert preview.view._aspect == 16 / 9 and main.picker._aspect == 16 / 9
+
 
 def test_resize_grip_only_shows_while_floating(plugin):
     qt = plugin.qt
@@ -182,3 +187,12 @@ def test_widened_fov_keeps_the_projection_square(plugin):
     assert widened_fov(90, 600, 300) > 90
     assert widened_fov(90, 300, 600) < 90
     assert widened_fov(160, 4000, 100) == pytest.approx(170)
+
+
+def test_widened_fov_follows_the_aspect_ratio(plugin):
+    from spherepaint.preview import projection_rect, widened_fov
+    assert projection_rect(1600, 900, 16 / 9) == pytest.approx((1600, 900))
+    assert projection_rect(1000, 900, 16 / 9) == pytest.approx((1000, 562.5))  # limited by the width
+    assert widened_fov(90, 1600, 900, 16 / 9) == pytest.approx(90)  # the frame is the projection
+    assert widened_fov(90, 1000, 1000, 16 / 9) == pytest.approx(90)  # full width, dimmed above and below
+    assert widened_fov(90, 900, 900, 9 / 16) > 90  # a narrow portrait frame leaves room on the sides

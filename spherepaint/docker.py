@@ -12,7 +12,7 @@ from .i18n import tr
 from .picker import DirectionPicker
 from .preview import PanoramaPreview
 from .qt import (
-    QApplication, QByteArray, QDoubleSpinBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMenu,
+    QActionGroup, QApplication, QByteArray, QDoubleSpinBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMenu,
     QMessageBox, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -23,6 +23,8 @@ DTYPES = {"U8": np.uint8, "U16": np.uint16, "F16": np.float16, "F32": np.float32
 TITLE = "SpherePaint"  # product name, not translated
 PREVIEW_SOURCE_WIDTH = 2048  # downscaled panorama used by the thumbnail and the 360° preview
 ANNOTATION = "spherepaint"  # document annotation holding the last view direction
+# Projection aspect ratios (width / height) offered in the menu; labels are universal, not translated.
+ASPECT_RATIOS = (("1:1", 1.0), ("4:3", 4 / 3), ("3:2", 3 / 2), ("16:9", 16 / 9), ("3:4", 3 / 4), ("9:16", 9 / 16))
 PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
 
@@ -225,6 +227,7 @@ class SphereDocker(DockWidget):
         self.session = None
         self._last_source_id = None  # panorama whose stored direction was last restored
         self._preview_image = None  # downscaled panorama shared with the 360° preview docker
+        self.aspect = 1.0  # projection width / height
         _DOCKERS.add(self)
 
         root = QWidget(self)
@@ -337,6 +340,17 @@ class SphereDocker(DockWidget):
         self.act_export_360.setToolTip(tr("Saves a JPEG with 360° metadata (GPano), recognised by Facebook, "
                                           "Google Photos, Kuula and other viewers"))
         menu.addSeparator()
+        aspect_menu = menu.addMenu(tr("Aspect ratio"))
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self.aspect_actions = {}
+        for label, value in ASPECT_RATIOS:
+            action = aspect_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(value == self.aspect)
+            action.triggered.connect(lambda _=False, v=value: self.set_aspect(v))
+            group.addAction(action)
+            self.aspect_actions[value] = action
         self.project_on_release = menu.addAction(tr("Project when the mouse is released"))
         self.project_on_release.setCheckable(True)
         self.project_on_release.setChecked(True)
@@ -354,6 +368,14 @@ class SphereDocker(DockWidget):
         self.view_size.hide()
         return menu
 
+    def set_aspect(self, value):
+        """Sets the projection's aspect ratio (width / height); the field of view stays horizontal."""
+        self.aspect = value
+        action = self.aspect_actions.get(value)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
+        self._sync_picker()
+
     def _ask_view_size(self):
         value, ok = QInputDialog.getInt(self, TITLE, tr("View size in pixels:"), self.view_size.value(), 256, 8192, 128)
         if ok:
@@ -368,7 +390,7 @@ class SphereDocker(DockWidget):
 
     def _save_direction(self, doc):
         """Stores yaw, pitch and field of view in the document (kept in .kra files)."""
-        data = {"yaw": self.yaw.value(), "pitch": self.pitch.value(), "fov": self.fov.value()}
+        data = {"yaw": self.yaw.value(), "pitch": self.pitch.value(), "fov": self.fov.value(), "aspect": self.aspect}
         try:
             doc.setAnnotation(ANNOTATION, "SpherePaint view direction", QByteArray(json.dumps(data).encode()))
         except (AttributeError, RuntimeError):  # older Krita without annotations, or closed document
@@ -391,6 +413,9 @@ class SphereDocker(DockWidget):
             for spin, key in ((self.yaw, "yaw"), (self.pitch, "pitch"), (self.fov, "fov")):
                 if isinstance(data.get(key), (int, float)):
                     spin.setValue(float(data[key]))
+            if isinstance(data.get("aspect"), (int, float)):
+                # Snap to the closest preset so the menu always shows a checked ratio.
+                self.set_aspect(min(self.aspect_actions, key=lambda v: abs(v - data["aspect"])))
 
     # --- mouse control ------------------------------------------------------
 
@@ -398,9 +423,9 @@ class SphereDocker(DockWidget):
         self.fov.setValue(self.fov.value() + 5 * steps)
 
     def _sync_picker(self, *_):
-        self.picker.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+        self.picker.setView(self.yaw.value(), self.pitch.value(), self.fov.value(), self.aspect)
         for preview in self._previews():
-            preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+            preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value(), self.aspect)
 
     def _on_picker_drag(self, yaw, pitch):
         self.yaw.setValue(yaw)
@@ -440,7 +465,7 @@ class SphereDocker(DockWidget):
     def push_to_preview(self, preview):
         """Gives a (newly shown) preview docker the current panorama and direction."""
         preview.view.setSource(self._preview_image)
-        preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value())
+        preview.view.setView(self.yaw.value(), self.pitch.value(), self.fov.value(), self.aspect)
 
     def open_preview(self):
         previews = self._previews()
@@ -512,7 +537,7 @@ class SphereDocker(DockWidget):
         user changes is transferred. Layers without a panorama counterpart start empty.
         """
         baselines = {}
-        size = view.size
+        width, height = view.width, view.height
         for layer in _extra_view_layers(view_doc):
             source = doc.nodeByName(layer.name())
             if (source is not None and source.type() == "paintlayer"
@@ -520,7 +545,7 @@ class SphereDocker(DockWidget):
                 content = P.equirect_to_view(_read(source, 0, 0, w, h, channels, dtype), view)
                 baselines[layer.name()] = content
             else:
-                content = np.zeros((size, size, channels), dtype=dtype)
+                content = np.zeros((height, width, channels), dtype=dtype)
             _write(layer, content, 0, 0)
         return baselines
 
@@ -604,7 +629,8 @@ class SphereDocker(DockWidget):
         size = P.matching_view_size(w, fov) if self.auto_size.isChecked() else self.view_size.value()
         if self.auto_size.isChecked():
             self.view_size.setValue(size)
-        view = P.View(self.yaw.value(), self.pitch.value(), fov, size)
+        height = P.view_height(size, self.aspect)
+        view = P.View(self.yaw.value(), self.pitch.value(), fov, size, height)
         channels = len(node.channels())
 
         self._busy(tr("Projecting…"))
@@ -617,7 +643,8 @@ class SphereDocker(DockWidget):
 
             previous = self.session if self._alive() else None
             same_source = previous is not None and _doc_id(doc) == _doc_id(previous.src_doc)
-            reuse = same_source and previous.view_doc.width() == size
+            reuse = (same_source and previous.view_doc.width() == size
+                     and previous.view_doc.height() == height)
             if reuse:
                 view_doc = self.session.view_doc
                 view_node = _find_paint_node(view_doc)
@@ -626,7 +653,7 @@ class SphereDocker(DockWidget):
                     view_doc.rootNode().addChildNode(view_node, None)
                 ref_node = view_doc.nodeByName(REFERENCE_LAYER)
             else:
-                view_doc = app.createDocument(size, size, tr("Sphere view – {name}", name=doc.name() or tr("untitled")),
+                view_doc = app.createDocument(size, height, tr("Sphere view – {name}", name=doc.name() or tr("untitled")),
                                               doc.colorModel(), doc.colorDepth(), doc.colorProfile(),
                                               doc.resolution())
                 root = view_doc.rootNode()
@@ -667,9 +694,10 @@ class SphereDocker(DockWidget):
             return
         self._save_direction(doc)
         self._last_source_id = _doc_id(doc)
-        self._done(tr("View {size}×{size} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
+        self._done(tr("View {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
                       "Paint in the layer '{layer}', then press 'Write back'.",
-                      size=size, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov, layer=PAINT_LAYER))
+                      width=size, height=height, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov,
+                      layer=PAINT_LAYER))
 
     # --- guide layer --------------------------------------------------------
 
@@ -848,20 +876,19 @@ class SphereDocker(DockWidget):
             raise LookupError(tr("Cannot tell which layer to write back. Merge your layers into one "
                                  "layer named '{layer}'.", layer=PAINT_LAYER))
         s.view_node = node
-        n = s.view.size
-        return _read(node, 0, 0, n, n, s.channels, s.dtype)
+        return _read(node, 0, 0, s.view.width, s.view.height, s.channels, s.dtype)
 
     def _pending_changes(self):
         """What would be written back: [(view layer name or None for 'Paint here', pixels, mask)]."""
         s = self.session
-        n = s.view.size
+        width, height = s.view.width, s.view.height
         painted = self._current_view_pixels()
         pending = []
         mask = P.change_mask(s.baseline, painted)
         if mask.any():
             pending.append((None, painted, mask))
         for layer in _extra_view_layers(s.view_doc):
-            pixels = _read(layer, 0, 0, n, n, s.channels, s.dtype)
+            pixels = _read(layer, 0, 0, width, height, s.channels, s.dtype)
             base = s.extra_baselines.get(layer.name())
             mask = P.change_mask(np.zeros_like(pixels) if base is None else base, pixels)
             if mask.any():

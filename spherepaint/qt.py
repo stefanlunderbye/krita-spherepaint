@@ -35,6 +35,7 @@ QPainterPath = QtGui.QPainterPath
 QPen = QtGui.QPen
 
 QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction  # moved to QtGui in Qt 6
+QActionGroup = getattr(QtGui, "QActionGroup", None) or QtWidgets.QActionGroup
 QApplication = QtWidgets.QApplication
 QInputDialog = QtWidgets.QInputDialog
 QMenu = QtWidgets.QMenu
