@@ -367,3 +367,152 @@ def test_settings_come_back_in_the_next_session(plugin):
     second.project_on_release.setChecked(True)
     second.auto_size.setChecked(True)
     second.view_size.setValue(1024)
+
+
+class FakeNode(FakeLayer):
+    """A paint layer in a fake document."""
+
+    def __init__(self, name, pixels, doc=None):
+        super().__init__(pixels)
+        self._name, self.doc, self._locked = name, doc, False
+
+    def name(self):
+        return self._name
+
+    def setName(self, name):
+        self._name = name
+
+    def type(self):
+        return "paintlayer"
+
+    def visible(self):
+        return True
+
+    def uniqueId(self):
+        return id(self)
+
+    def locked(self):
+        return self._locked
+
+    def setLocked(self, locked):
+        self._locked = locked
+
+    def remove(self):
+        self.doc.nodes.remove(self)
+
+
+class FakeDocument:
+    """A document whose merged image is its first layer, enough for SpherePaint's write-back and undo."""
+
+    def __init__(self, *nodes):
+        self.nodes = list(nodes)
+        for node in nodes:
+            node.doc = self
+
+    def pixelData(self, *args):
+        return self.nodes[0].pixelData(*args)
+
+    def width(self):
+        return self.nodes[0].width()
+
+    def height(self):
+        return self.nodes[0].height()
+
+    def rootNode(self):
+        return types.SimpleNamespace(uniqueId=lambda: id(self), childNodes=lambda: list(self.nodes))
+
+    def nodeByName(self, name):
+        return next((n for n in self.nodes if n.name() == name), None)
+
+    def refreshProjection(self):
+        pass
+
+    def waitForDone(self):
+        pass
+
+    def setActiveNode(self, node):
+        pass
+
+
+def undo_setup(plugin, monkeypatch):
+    import projection as P
+    from test_projection import noise_equirect
+
+    docker = plugin.pkg.docker
+    monkeypatch.setattr(docker, "_commit_pending_strokes", lambda *docs: None)
+    eq = noise_equirect()
+    layer = FakeNode("Background", eq)
+    panorama = FakeDocument(layer)
+    panel = docker.SphereDocker()
+    panel._alive = lambda: True
+    panel._open_ids = lambda: {id(panorama)}
+    panel._refresh_thumbnail = lambda: None
+
+    def project(yaw):
+        view = P.View(yaw, 0, 90, 300)
+        projected = P.equirect_to_view(layer.pixels, view)
+        paint = FakeNode(docker.PAINT_LAYER, projected)
+        reference = FakeNode(docker.REFERENCE_LAYER, projected)
+        view_doc = FakeDocument(paint, reference)
+        panel.session = docker.Session(panorama, layer, view_doc, paint, view, np.uint8, 4, projected)
+        for step in panel.history.get(id(panorama), []):  # as project() does
+            step["baseline"] = step["extra_baselines"] = None
+        return paint
+
+    def paint_and_apply(paint, rows):
+        paint.pixels[rows, 100:200] = (0, 0, 255, 255)
+        panel.apply()
+
+    return docker, panel, layer, eq, project, paint_and_apply
+
+
+def test_several_write_backs_can_be_undone_one_by_one(plugin, monkeypatch):
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
+    paint = project(0)
+    paint_and_apply(paint, slice(50, 60))
+    after_first = layer.pixels.copy()
+    paint_and_apply(paint, slice(150, 160))
+    assert len(panel._undo_steps()) == 2 and panel.btn_undo.isEnabled()
+    assert not np.array_equal(layer.pixels, after_first)
+
+    panel.undo_apply()
+    assert np.array_equal(layer.pixels, after_first)
+    assert [name for name, _, _ in panel._pending_changes()] == [None]  # the second stroke is waiting again
+    panel.undo_apply()
+    assert np.array_equal(layer.pixels, eq)
+    assert not panel._undo_steps() and not panel.btn_undo.isEnabled()
+
+    panel.apply()  # write back again: both strokes come back in one step
+    assert len(panel._undo_steps()) == 1 and not np.array_equal(layer.pixels, eq)
+
+
+def test_undoing_a_write_back_from_another_view_projects_the_view_again(plugin, monkeypatch):
+    import projection as P
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
+    paint_and_apply(project(0), slice(50, 60))
+    paint = project(40)  # a new view that overlaps the first one
+    assert not panel._pending_changes()
+
+    panel.undo_apply()  # no unapplied changes: no question asked
+    assert np.array_equal(layer.pixels, eq)
+    assert np.array_equal(paint.pixels, P.equirect_to_view(eq, panel.session.view))  # the stroke is gone from the view
+    assert not panel._pending_changes()
+
+
+def test_undo_from_another_view_asks_before_discarding_unapplied_changes(plugin, monkeypatch):
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
+    paint_and_apply(project(0), slice(50, 60))
+    after = layer.pixels.copy()
+    paint = project(90)
+    paint.pixels[10:20, 10:20] = (255, 0, 0, 255)  # painted, not written back
+    monkeypatch.setattr(docker.QMessageBox, "question", staticmethod(lambda *args: docker.NO))
+    panel.undo_apply()
+    assert np.array_equal(layer.pixels, after) and len(panel._undo_steps()) == 1  # cancelled: nothing changed
+
+
+def test_undo_history_is_limited(plugin, monkeypatch):
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
+    paint = project(0)
+    for i in range(docker.UNDO_STEPS + 3):
+        paint_and_apply(paint, slice(10 + 20 * i, 15 + 20 * i))
+    assert len(panel._undo_steps()) == docker.UNDO_STEPS

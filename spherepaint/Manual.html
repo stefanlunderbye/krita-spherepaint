@@ -22,6 +22,11 @@
 <p><strong>⋯ → Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked in the <strong>⋯</strong> menu).</p>
 <p>The area inside the yellow frame is exactly what <strong>Project</strong> will show; when the window has another shape than the projection, the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
 
+<h2>Undo</h2>
+<p><strong>Undo</strong> in the panel takes back the latest write-back in the panorama; press it again to go further back, up to 10 write-backs (fewer when they are very large). The tooltip shows how many steps are available. Each panorama has its own history.</p>
+<p>When the write-back was made from the view that is open, the view is left as it is, so your painting is still there – press <strong>Write back</strong> to apply it again. When it was made from an earlier view (another direction), the open view is projected again so that it matches the panorama; if it has changes that haven't been written back, SpherePaint asks first, since they would be lost.</p>
+<p>Undo restores the panorama pixels as they were before the write-back, so changes you made directly in the panorama in the same area afterwards are undone too.</p>
+
 <h2>Remembered direction</h2>
 <p>Every projection stores its yaw, pitch, field of view and aspect ratio in the panorama document. When you switch back to that panorama, or open the saved <em>.kra</em> file later, the panel restores them, so you continue where you left off.</p>
 <p>The panel's own settings – field of view, aspect ratio, <em>Project when the mouse is released</em>, <em>Automatic view size</em> and the view size – are saved in Krita's settings and come back the next time you start Krita.</p>
@@ -69,7 +74,7 @@
 
 <h2>Limitations</h2>
 <ul>
-<li>Write-back is not part of Krita's undo history. Use <strong>Undo</strong> in the panel (one step), or save before larger changes.</li>
+<li>Write-back is not part of Krita's undo history. Use <strong>Undo</strong> in the panel instead, or save before larger changes.</li>
 <li>Hidden layers in the view are not written back – use them for sketches.</li>
 <li>The source must be a regular paint layer. 8/16-bit integer and 16/32-bit float colour depths are supported.</li>
 </ul>

@@ -139,10 +139,21 @@ SV = {
     "Done: {count} pixels updated in {layers}.": "Klart: {count} pixlar uppdaterade i {layers}.",
     "The layer '{layer}' in the panorama is not a paint layer.":
         "Lagret '{layer}' i panoramat är inget målarlager.",
-    "The last write-back has been undone in the equirectangular image. "
+    "Undo last write-back ({count} available)": "Ångra senaste tillbakaskrivning ({count} tillgängliga)",
+    "Undoing…": "Ångrar…",
+    "Undo failed: {error}": "Ångra misslyckades: {error}",
+    "This write-back was made from another view. Undoing it projects the current view "
+    "again, which discards the changes in it that haven't been written back. Continue?":
+        "Den här tillbakaskrivningen gjordes från en annan vy. Att ångra den projicerar om den "
+        "nuvarande vyn, och då försvinner ändringar i den som inte skrivits tillbaka. Fortsätta?",
+    "Write-back undone in the equirectangular image ({count} more can be undone). "
     "The view is unchanged – press 'Write back' again to redo it.":
-        "Senaste tillbakaskrivningen är ångrad i equirect-bilden. "
+        "Tillbakaskrivningen är ångrad i equirect-bilden ({count} till kan ångras). "
         "Vyn är oförändrad – tryck 'Skriv tillbaka' igen för att göra om den.",
+    "Write-back undone in the equirectangular image ({count} more can be undone). "
+    "The view has been projected again.":
+        "Tillbakaskrivningen är ångrad i equirect-bilden ({count} till kan ångras). "
+        "Vyn har projicerats om.",
 }
 
 CATALOGS = {"sv": SV}

@@ -1,4 +1,5 @@
 """Docker panel: switches between the equirectangular image (flat) and a perspective view."""
+import itertools
 import json
 import math
 import os
@@ -26,6 +27,8 @@ TITLE = "SpherePaint"  # product name, not translated
 PREVIEW_SOURCE_WIDTH = 2048  # downscaled panorama used by the thumbnail and the 360° preview
 ANNOTATION = "spherepaint"  # document annotation holding the last view direction
 # Projection aspect ratios (width / height) offered in the menu; labels are universal, not translated.
+UNDO_STEPS = 10  # write-backs that can be undone, per panorama
+UNDO_BYTES = 1 << 30  # memory the undo history may hold; the oldest steps are dropped first
 SETTINGS_GROUP = "SpherePaint"  # section in Krita's settings file (kritarc)
 ASPECT_RATIOS = (("1:1", 1.0), ("4:3", 4 / 3), ("3:2", 3 / 2), ("16:9", 16 / 9), ("3:4", 3 / 4), ("9:16", 9 / 16))
 PAINT_LAYER = tr("Paint here")
@@ -247,6 +250,9 @@ def _find_paint_node(view_doc):
     return None
 
 
+_SESSION_NUMBERS = itertools.count(1)
+
+
 class Session:
     """An ongoing projection: the source image, the view, and what the view looked like originally."""
 
@@ -260,7 +266,7 @@ class Session:
         self.channels = channels
         self.baseline = baseline
         self.extra_baselines = {}  # extra view layer name -> pixels at the last write-back
-        self.undo = None  # state needed to undo the last write-back (see apply)
+        self.number = next(_SESSION_NUMBERS)  # tells undo steps made from this view apart
 
 
 class PreviewDocker(DockWidget):
@@ -324,6 +330,7 @@ class SphereDocker(DockWidget):
         self._preview_image = None  # downscaled panorama shared with the 360° preview docker
         self._thumbnail_doc = None  # id of the document it was made from
         self.aspect = 1.0  # projection width / height
+        self.history = {}  # panorama id -> undo steps for its write-backs, oldest first (see apply)
         _DOCKERS.add(self)
 
         root = QWidget(self)
@@ -675,7 +682,10 @@ class SphereDocker(DockWidget):
         alive = self._alive()
         self.btn_apply.setEnabled(alive)
         self.btn_toggle.setEnabled(alive)
-        self.btn_undo.setEnabled(alive and bool(self.session.undo))
+        steps = len(self._undo_steps()) if alive else 0
+        self.btn_undo.setEnabled(steps > 0)
+        self.btn_undo.setToolTip(tr("Undo last write-back ({count} available)", count=steps) if steps
+                                 else tr("Undo last write-back"))
 
     def _show(self, doc):
         if not doc:
@@ -843,11 +853,10 @@ class SphereDocker(DockWidget):
             extra_baselines = self._fill_extra_layers(doc, node, view_doc, view, w, h, channels, dtype)
             view_doc.refreshProjection()
 
-            same_layer = same_source and previous.src_node.uniqueId() == node.uniqueId()
-            undo = previous.undo if same_layer else None
             self.session = Session(doc, node, view_doc, view_node, view, dtype, channels, projected)
             self.session.extra_baselines = extra_baselines
-            self.session.undo = undo
+            for step in self.history.get(_doc_id(doc), []):
+                step["baseline"] = step["extra_baselines"] = None  # only meaningful for their own view
             if not reuse:
                 app.activeWindow().addView(view_doc)
                 if previous is not None:
@@ -1097,7 +1106,7 @@ class SphereDocker(DockWidget):
             margin = _reference_margin(s.view, s.src_doc.width())
             for _, _, mask in pending:
                 refresh = _union(_changed_rect(mask, s.view, margin), refresh)
-            undo = {"pixels": [], "created": [], "baseline": s.baseline,
+            undo = {"pixels": [], "created": [], "session": s.number, "baseline": s.baseline,
                     "extra_baselines": dict(s.extra_baselines), "refresh": refresh}
             touched = []
             changed = 0
@@ -1114,7 +1123,7 @@ class SphereDocker(DockWidget):
                     s.extra_baselines[name] = pixels
             s.src_doc.refreshProjection()
             s.src_doc.setActiveNode(s.src_node)
-            s.undo = undo
+            self._push_undo(undo)
             self._refresh_reference(refresh)
         except Exception as e:
             self._fail(tr("Write-back failed: {error}", error=e))
@@ -1169,21 +1178,98 @@ class SphereDocker(DockWidget):
             changed += int((weight > 0).sum())
         return changed
 
+    # --- undo ---------------------------------------------------------------
+
+    def _undo_steps(self):
+        """The undo history of the current panorama (oldest first); empty without a projection."""
+        if self.session is None:
+            return []
+        return self.history.get(_doc_id(self.session.src_doc), [])
+
+    def _push_undo(self, step):
+        """Adds a write-back to the history, dropping the oldest steps beyond the limits."""
+        open_ids = self._open_ids()
+        for doc_id in [d for d in self.history if d not in open_ids]:
+            del self.history[doc_id]  # the panorama was closed
+        steps = self.history.setdefault(_doc_id(self.session.src_doc), [])
+        steps.append(step)
+
+        def size(entry):
+            arrays = [old for _, _, _, old in entry["pixels"]]
+            if entry["baseline"] is not None:
+                arrays.append(entry["baseline"])
+                arrays.extend(entry["extra_baselines"].values())
+            return sum(a.nbytes for a in arrays)
+
+        while len(steps) > 1 and (len(steps) > UNDO_STEPS or sum(size(e) for e in steps) > UNDO_BYTES):
+            steps.pop(0)
+
     def undo_apply(self):
-        if not self._alive() or not self.session.undo:
+        """Undoes the latest write-back of the current panorama; repeat to go further back."""
+        if not self._alive() or not self._undo_steps():
             return
         s = self.session
-        undo = s.undo
-        for target, r0, c0, old in reversed(undo["pixels"]):
-            _write(target, old, c0, r0)
-        for node in undo["created"]:
-            node.remove()
-        s.src_doc.refreshProjection()
-        # The view still contains the painting, so compare against the state before the write-back.
-        s.baseline = undo["baseline"]
-        s.extra_baselines = undo["extra_baselines"]
-        s.undo = None
-        self._refresh_reference(undo.get("refresh"))
-        self._done(tr("The last write-back has been undone in the equirectangular image. "
-                      "The view is unchanged – press 'Write back' again to redo it."),
-                   _changed_boxes(undo["pixels"], s.src_doc.width()))
+        steps = self._undo_steps()
+        step = steps[-1]
+        same_view = step["session"] == s.number
+        if not same_view:
+            # Made from another view: the open view shows the panorama with that write-back,
+            # so it is projected again, which replaces what has been painted there since.
+            _commit_pending_strokes(s.view_doc)
+            if self._has_unapplied_changes():
+                answer = QMessageBox.question(
+                    self, TITLE,
+                    tr("This write-back was made from another view. Undoing it projects the current view "
+                       "again, which discards the changes in it that haven't been written back. Continue?"))
+                if answer != YES:
+                    return
+        steps.pop()
+        self._busy(tr("Undoing…"))
+        try:
+            for target, r0, c0, old in reversed(step["pixels"]):
+                _write(target, old, c0, r0)
+            for node in step["created"]:
+                node.remove()
+            s.src_doc.refreshProjection()
+            if same_view:
+                # The view still contains the painting, so compare against the state before the write-back.
+                s.baseline = step["baseline"]
+                s.extra_baselines = step["extra_baselines"]
+                self._refresh_reference(step["refresh"])
+                text = tr("Write-back undone in the equirectangular image ({count} more can be undone). "
+                          "The view is unchanged – press 'Write back' again to redo it.", count=len(steps))
+            else:
+                self._reproject_session()
+                text = tr("Write-back undone in the equirectangular image ({count} more can be undone). "
+                          "The view has been projected again.", count=len(steps))
+        except Exception as e:
+            self._fail(tr("Undo failed: {error}", error=e))
+            return
+        self._done(text, _changed_boxes(step["pixels"], s.src_doc.width()))
+
+    def _reproject_session(self):
+        """Projects the panorama into the open view again, in the same direction."""
+        s = self.session
+        w, h = s.src_doc.width(), s.src_doc.height()
+        s.src_doc.waitForDone()
+        region = P.view_region(s.view, w, h)
+        layer_px = _read_region(s.src_node, region, w, s.channels, s.dtype)
+        merged = _read_region(s.src_doc, region, w, s.channels, s.dtype)
+        projected, reference = P.equirect_to_views([layer_px, merged], s.view, (region[0], region[1], w, h))
+        del layer_px, merged
+        node = _find_paint_node(s.view_doc)
+        if node is None:
+            node = s.view_doc.createNode(PAINT_LAYER, "paintlayer")
+            s.view_doc.rootNode().addChildNode(node, None)
+        s.view_node = node
+        _write(node, projected, 0, 0)
+        ref = s.view_doc.nodeByName(REFERENCE_LAYER)
+        if ref is not None:
+            locked = ref.locked()
+            ref.setLocked(False)
+            _write(ref, reference, 0, 0)
+            ref.setLocked(locked)
+        s.extra_baselines = self._fill_extra_layers(s.src_doc, s.src_node, s.view_doc, s.view, w, h,
+                                                    s.channels, s.dtype)
+        s.baseline = projected
+        s.view_doc.refreshProjection()

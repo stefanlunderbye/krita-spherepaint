@@ -6,6 +6,9 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Undo in several steps: **Undo** takes back up to 10 write-backs per panorama, one at a time (fewer when they are very large). Undoing a write-back made from another direction projects the open view again, after asking if it has changes that haven't been written back.
+
 ## [0.6.0] – 2026-10-06
 
 ### Added

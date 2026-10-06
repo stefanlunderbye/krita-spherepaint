@@ -46,7 +46,7 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - Guide layer with labelled cube faces (front, right, back, left, top, bottom), grid and centre crosses, correctly distorted
 - Keyboard-shortcut actions for project, write back, toggle view, undo and guide layer
 - Premultiplied-alpha resampling, so semi-transparent strokes keep clean edges
-- One-step undo of the last write-back
+- Undo for write-backs, up to 10 steps back
 - Follows Krita's interface language (English and Swedish included)
 
 ## Works great with AI image generation
@@ -96,7 +96,7 @@ Stable Diffusion, Flux and similar models work best on ordinary perspective imag
 4. Press **Write back to sphere**. Use **Show flat** / **Show projection** to switch between the two.
 5. Change the direction and project again to work on another part of the sphere.
 
-Note: write-back is not part of Krita's own undo history. Use **Undo last write-back** in the panel, or save before larger changes.
+Note: write-back is not part of Krita's own undo history. Use **Undo** in the panel (up to 10 steps), or save before larger changes.
 
 ## Running the tests
 
