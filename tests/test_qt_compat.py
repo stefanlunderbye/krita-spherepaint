@@ -145,6 +145,7 @@ def test_docker_builds(plugin):
     docker = plugin.pkg.docker.SphereDocker()
     assert docker.btn_project.text() and docker.btn_apply.text()
     assert docker.act_export_cube.text() and docker.act_export_360.text()
+    assert not docker.btn_more.icon().isNull()
     assert docker.project_on_release.isChecked() and docker.auto_size.isChecked()
     assert not docker.act_view_size.isEnabled()
     docker.auto_size.setChecked(False)

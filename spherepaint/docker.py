@@ -15,7 +15,7 @@ from .picker import DirectionPicker
 from .preview import PanoramaPreview
 from .qt import (
     QActionGroup, QApplication, QByteArray, QDoubleSpinBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMenu,
-    QImage, QMessageBox, QPainter, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QToolButton,
+    QImage, QMessageBox, QPainter, QPushButton, QSizeGrip, QSizePolicy, QSpinBox, Qt, QtCore, QtGui, QToolButton,
     QVBoxLayout, QWidget,
 )
 
@@ -50,11 +50,29 @@ def docker_for_active_window():
     return dockers[0] if dockers else None
 
 
-def _set_icon(button, name):
-    """Uses one of Krita's own icons when it exists, so the panel matches Krita's theme."""
-    icon = Krita.instance().icon(name)
-    if icon is not None and not icon.isNull():
-        button.setIcon(icon)
+def _menu_icon(widget):
+    """Three horizontal lines in the widget's text colour (Krita has no such icon of its own)."""
+    pixmap = QtGui.QPixmap(32, 32)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QtGui.QPen(widget.palette().color(QtGui.QPalette.ColorRole.ButtonText), 3)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    for y in (8, 16, 24):
+        painter.drawLine(5, y, 27, y)
+    painter.end()
+    pixmap.setDevicePixelRatio(2.0)  # drawn at twice the size, sharp on high-DPI screens
+    return QtGui.QIcon(pixmap)
+
+
+def _set_icon(button, *names):
+    """Uses the first of Krita's own icons that exists, so the panel matches Krita's theme."""
+    for name in names:
+        icon = Krita.instance().icon(name)
+        if icon is not None and not icon.isNull():
+            button.setIcon(icon)
+            return
 
 
 def _alive_widgets(registry):
@@ -385,7 +403,7 @@ class SphereDocker(DockWidget):
         self.btn_apply.setToolTip(
             tr("Transfers what changed in the layer '{layer}' to the equirectangular image", layer=PAINT_LAYER))
         self.btn_apply.clicked.connect(self.apply)
-        for button, icon in ((self.btn_project, "view-refresh"), (self.btn_apply, "document-save")):
+        for button, icon in ((self.btn_project, "tool_perspectivegrid"), (self.btn_apply, "merge-layer-below")):
             button.setMinimumHeight(32)
             _set_icon(button, icon)
             main.addWidget(button)
@@ -393,14 +411,13 @@ class SphereDocker(DockWidget):
 
         # Secondary actions and the menu with everything used less often.
         secondary = QHBoxLayout()
-        self.btn_undo = QToolButton()
-        self.btn_undo.setText(tr("Undo"))
+        # Push buttons centre their icon and text; stretched tool buttons left-align them.
+        self.btn_undo = QPushButton(tr("Undo"))
         self.btn_undo.setToolTip(tr("Undo last write-back"))
-        self.btn_undo.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         _set_icon(self.btn_undo, "edit-undo")
         self.btn_undo.clicked.connect(self.undo_apply)
-        self.btn_toggle = QToolButton()
-        self.btn_toggle.setText(tr("Flat / Projection"))
+        self.btn_toggle = QPushButton(tr("Flat / Projection"))
+        _set_icon(self.btn_toggle, "view-refresh")
         self.btn_toggle.setToolTip(tr("Switches between the flat image and the projection"))
         self.btn_toggle.clicked.connect(self.toggle_view)
         for button in (self.btn_undo, self.btn_toggle):
@@ -411,9 +428,13 @@ class SphereDocker(DockWidget):
         self.btn_more.setToolTip(tr("More: preview, guide layer, cube maps, export and settings"))
         self.btn_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.btn_more.setMinimumWidth(36)
-        _set_icon(self.btn_more, "application-menu")
+        self.btn_more.setIcon(_menu_icon(self.btn_more))
         self.btn_more.setMenu(self._build_menu())
         secondary.addWidget(self.btn_more)
+        # The icon makes Undo taller than the others; give the whole row one height.
+        row_height = max(b.sizeHint().height() for b in (self.btn_undo, self.btn_toggle, self.btn_more))
+        for button in (self.btn_undo, self.btn_toggle, self.btn_more):
+            button.setFixedHeight(row_height)
         layout.addLayout(secondary)
 
         self.status = QLabel(tr("Open an equirectangular image (2:1) and select the layer you want to paint on."))
