@@ -18,7 +18,7 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 
 ![Undistorted perspective view of the same direction](docs/projection.jpg)
 
-**3. Paint as usual.** Everything behaves like a normal image – here a simple sign.
+**3. Paint as usual.** The view has the same layers as the panorama and behaves like a normal image – here a simple sign on a new layer.
 
 ![A sign painted in the perspective view](docs/painted.jpg)
 
