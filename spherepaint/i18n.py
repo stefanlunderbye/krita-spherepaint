@@ -29,6 +29,12 @@ SV = {
         "Klicka eller dra för att välja riktning; scrolla för att ändra synfältet",
     "Aspect ratio": "Proportioner",
     "Project when the mouse is released": "Projicera när musknappen släpps",
+    "Update the thumbnail and preview while painting in the panorama":
+        "Uppdatera miniatyr och förhandsvisning medan du målar i panoramat",
+    "Checks the panorama for changes every second and refreshes the thumbnail "
+    "and the 360° preview once you have stopped painting":
+        "Kontrollerar panoramat efter ändringar varje sekund och uppdaterar miniatyren "
+        "och 360°-förhandsvisningen när du har slutat måla",
     "SpherePaint: Project view": "SpherePaint: Projicera vy",
     "SpherePaint: Write back to sphere": "SpherePaint: Skriv tillbaka till sfären",
     "SpherePaint: Toggle flat / projection": "SpherePaint: Växla platt / projektion",

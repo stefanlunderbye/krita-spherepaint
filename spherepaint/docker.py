@@ -4,6 +4,7 @@ import itertools
 import json
 import math
 import os
+import time
 import weakref
 import zlib
 
@@ -31,6 +32,9 @@ ANNOTATION = "spherepaint"  # document annotation holding the last view directio
 # Projection aspect ratios (width / height) offered in the menu; labels are universal, not translated.
 UNDO_STEPS = 10  # write-backs that can be undone, per panorama
 UNDO_BYTES = 1 << 30  # memory the undo history may hold; the oldest steps are dropped first
+WATCH_INTERVAL_MS = 1000  # how often the panorama is checked for changes, when that is switched on
+WATCH_QUIET_S = 1.0  # the thumbnail is remade once the panorama has been left alone this long
+WATCH_ROWS = 512  # rows sampled to notice a change
 SETTINGS_GROUP = "SpherePaint"  # section in Krita's settings file (kritarc)
 ASPECT_RATIOS = (("1:1", 1.0), ("4:3", 4 / 3), ("3:2", 3 / 2), ("16:9", 16 / 9), ("3:4", 3 / 4), ("9:16", 9 / 16))
 REFERENCE_LAYER = tr("Reference (whole image)")
@@ -218,6 +222,19 @@ def _write_setting(name, value):
         Krita.instance().writeSetting(SETTINGS_GROUP, name, text)
     except (AttributeError, RuntimeError):
         pass
+
+
+def _fingerprint(doc):
+    """A checksum of evenly spread rows of the merged image: cheap, and changes when the image does.
+
+    A change that falls entirely between sampled rows (a stroke only a few pixels
+    high on a large image) is noticed with the next change that doesn't.
+    """
+    w, h = doc.width(), doc.height()
+    digest = hashlib.blake2b(digest_size=16)
+    for y in np.unique(np.linspace(0, h - 1, min(h, WATCH_ROWS)).astype(int)):
+        digest.update(bytes(doc.pixelData(0, int(y), w, 1)))
+    return digest.digest()
 
 
 def _union(a, b):
@@ -504,6 +521,11 @@ class SphereDocker(DockWidget):
         layout.addStretch(1)
         self.setWidget(root)
         self._update_buttons()
+        # Watching the panorama for direct edits (see _watch_panorama).
+        self._watch = None  # (document id, fingerprint, time of the last change, refresh due)
+        self._watch_timer = QtCore.QTimer(self)
+        self._watch_timer.setInterval(WATCH_INTERVAL_MS)
+        self._watch_timer.timeout.connect(self._watch_panorama)
         self._load_settings()
 
     def _load_settings(self):
@@ -521,6 +543,10 @@ class SphereDocker(DockWidget):
         self.fov.valueChanged.connect(lambda value: _write_setting("fov", float(value)))
         self.project_on_release.toggled.connect(lambda on: _write_setting("projectOnRelease", on))
         self.auto_size.toggled.connect(lambda on: _write_setting("autoViewSize", on))
+        self.live_thumbnail.setChecked(_read_setting("liveThumbnail", False))
+        self._live_toggled(self.live_thumbnail.isChecked())
+        self.live_thumbnail.toggled.connect(lambda on: _write_setting("liveThumbnail", on))
+        self.live_thumbnail.toggled.connect(self._live_toggled)
         self.view_size.valueChanged.connect(lambda value: _write_setting("viewSize", int(value)))
 
     def _build_menu(self):
@@ -552,7 +578,10 @@ class SphereDocker(DockWidget):
             self.aspect_actions[value] = action
         self.project_on_release = menu.addAction(tr("Project when the mouse is released"))
         self.project_on_release.setCheckable(True)
-        self.project_on_release.setChecked(True)
+        self.live_thumbnail = menu.addAction(tr("Update the thumbnail and preview while painting in the panorama"))
+        self.live_thumbnail.setCheckable(True)
+        self.live_thumbnail.setToolTip(tr("Checks the panorama for changes every second and refreshes the thumbnail "
+                                          "and the 360° preview once you have stopped painting"))
         self.auto_size = menu.addAction(tr("Automatic view size (same density as the image)"))
         self.auto_size.setCheckable(True)
         self.auto_size.setChecked(True)
@@ -660,6 +689,40 @@ class SphereDocker(DockWidget):
         self.picker.setImage(image.scaled(512, 256) if image is not None else None)
         for preview in self._previews():
             preview.view.setSource(image)
+
+    def _live_toggled(self, on):
+        self._watch = None
+        if on:
+            self._watch_timer.start()
+        else:
+            self._watch_timer.stop()
+
+    def _watch_panorama(self, now=None):
+        """Refreshes the thumbnail and the 360° preview after the panorama has been painted in directly.
+
+        Krita has no signal for "the image changed", so the active panorama is sampled
+        every second. A change is acted on only once the image has stayed the same for
+        a moment, so the thumbnail isn't remade while a stroke or a filter is still going.
+        """
+        now = time.monotonic() if now is None else now
+        doc = Krita.instance().activeDocument()
+        if doc is None or (self._alive() and _doc_id(doc) == _doc_id(self.session.view_doc)):
+            return  # the view is refreshed by write-back
+        source = self._thumbnail_source()
+        if source is None or _doc_id(source) != _doc_id(doc):
+            return  # not a panorama
+        try:
+            fingerprint = _fingerprint(doc)
+        except RuntimeError:  # closed meanwhile
+            return
+        doc_id = _doc_id(doc)
+        if self._watch is None or self._watch[0] != doc_id:
+            self._watch = (doc_id, fingerprint, now, False)  # a new document: just remember it
+        elif fingerprint != self._watch[1]:
+            self._watch = (doc_id, fingerprint, now, True)
+        elif self._watch[3] and now - self._watch[2] >= WATCH_QUIET_S:
+            self._watch = (doc_id, fingerprint, now, False)
+            self._refresh_thumbnail()
 
     def _patch_thumbnail(self, boxes):
         """Redraws only the given panorama areas in the thumbnail and preview, instead of letting

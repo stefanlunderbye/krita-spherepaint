@@ -12,7 +12,7 @@
 <li>Show the panel with <strong>Settings → Dockers → SpherePaint</strong>.</li>
 <li>Open an equirectangular image (width twice the height).</li>
 <li>Choose a direction: click or drag in the panorama thumbnail at the top of the panel (scroll to change the field of view), type <strong>Yaw</strong>, <strong>Pitch</strong> and <strong>Field of view</strong>, or use the quick buttons <em>Front, Right, Back, Left, Up, Down</em>. The yellow outline shows the area the view will cover.</li>
-<li>Press <strong>Project</strong> – or just release the mouse in the thumbnail (<em>Project when the mouse is released</em> in the <strong>⋯</strong> menu is on by default). A new document called <em>Sphere view</em> opens.</li>
+<li>Press <strong>Project</strong>. A new document called <em>Sphere view</em> opens. To project as soon as you release the mouse in the thumbnail or the 360° preview, switch on <em>Project when the mouse is released</em> in the <strong>⋯</strong> menu.</li>
 <li>The view has the same paint layers as the panorama, in the same order – paint in any of them, or add new ones. The layer that was active in the panorama is active in the view.</li>
 <li>Press <strong>Write back</strong>. Only the pixels you changed are transferred; the rest of the image is untouched.</li>
 <li>Use <strong>Flat / Projection</strong> to switch between the two documents. Change the direction and press <strong>Project</strong> again to work on another part of the sphere.</li>
@@ -21,6 +21,7 @@
 <h2>360° preview</h2>
 <p><strong>⋯ → Open 360° preview</strong> opens the <em>SpherePaint 360° Preview</em> docker as a floating window that you can move and resize, or dock anywhere like any Krita docker (it is also listed under <strong>Settings → Dockers</strong>). Drag in it to look around like in a 360° viewer, scroll to zoom, and release to project (when <em>Project when the mouse is released</em> is ticked in the <strong>⋯</strong> menu).</p>
 <p>The area inside the yellow frame is exactly what <strong>Project</strong> will show; when the window has another shape than the projection, the panorama around it is shown dimmed. Use the thumbnail for quick, coarse aiming and the preview for fine-tuning. It is rendered from a downscaled copy of the panorama and refreshes after every write-back.</p>
+<p>When you also paint directly in the flat panorama, switch on <strong>⋯ → Update the thumbnail and preview while painting in the panorama</strong>. The panel then checks the panorama every second and refreshes the thumbnail and the preview once you have stopped painting for a moment. It is off by default, since checking costs a little time on very large images.</p>
 
 <h2>Undo</h2>
 <p><strong>Undo</strong> in the panel takes back the latest write-back in the panorama; press it again to go further back, up to 10 write-backs (fewer when they are very large). The tooltip shows how many steps are available. Each panorama has its own history.</p>

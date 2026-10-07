@@ -146,7 +146,7 @@ def test_docker_builds(plugin):
     assert docker.btn_project.text() and docker.btn_apply.text()
     assert docker.act_export_cube.text() and docker.act_export_360.text()
     assert not docker.btn_more.icon().isNull()
-    assert docker.project_on_release.isChecked() and docker.auto_size.isChecked()
+    assert not docker.project_on_release.isChecked() and docker.auto_size.isChecked()  # the defaults
     assert not docker.act_view_size.isEnabled()
     docker.auto_size.setChecked(False)
     assert docker.act_view_size.isEnabled()
@@ -351,21 +351,21 @@ def test_settings_come_back_in_the_next_session(plugin):
     first = docker.SphereDocker()
     first.fov.setValue(120)
     first.aspect_actions[16 / 9].trigger()
-    first.project_on_release.setChecked(False)
+    first.project_on_release.setChecked(True)
     first.auto_size.setChecked(False)
     first.view_size.setValue(3000)
 
     second = docker.SphereDocker()  # as after restarting Krita
     assert second.fov.value() == 120
     assert second.aspect == 16 / 9 and second.aspect_actions[16 / 9].isChecked()
-    assert not second.project_on_release.isChecked()
+    assert second.project_on_release.isChecked()
     assert not second.auto_size.isChecked() and second.act_view_size.isEnabled()
     assert second.view_size.value() == 3000
 
     # Back to the defaults, so the other tests start from them.
     second.fov.setValue(90)
     second.set_aspect(1.0)
-    second.project_on_release.setChecked(True)
+    second.project_on_release.setChecked(False)
     second.auto_size.setChecked(True)
     second.view_size.setValue(1024)
 
@@ -787,3 +787,35 @@ def test_a_new_group_in_the_view_becomes_a_new_group_in_the_panorama(plugin, mon
     assert [n.name() for n in panorama.nodes] == ["Background", "Group"]
     panel.apply()  # written back again: the group is created again
     assert [n.name() for n in panorama.nodes] == ["Background", "Signs", "Group"]
+
+
+def test_thumbnail_follows_direct_edits_of_the_panorama_once_painting_stops(plugin, monkeypatch):
+    from test_projection import noise_equirect
+    docker = plugin.pkg.docker
+    layer = FakeNode("Background", noise_equirect())
+    doc = FakeDocument(layer)
+    monkeypatch.setattr(type(docker.Krita.instance()), "activeDocument", lambda self: doc, raising=False)
+    panel = docker.SphereDocker()
+    refreshed = []
+    panel._refresh_thumbnail = lambda: refreshed.append(True)
+    assert not panel.live_thumbnail.isChecked() and not panel._watch_timer.isActive()  # off by default
+    panel.live_thumbnail.setChecked(True)
+    assert panel._watch_timer.isActive()
+
+    panel._watch_panorama(now=0.0)  # remembers the image
+    panel._watch_panorama(now=1.0)
+    assert not refreshed  # nothing changed
+    layer.pixels[200:220, 300:400] = (0, 0, 255, 255)  # painting directly in the panorama
+    panel._watch_panorama(now=2.0)
+    layer.pixels[220:240, 300:400] = (0, 0, 255, 255)  # still painting
+    panel._watch_panorama(now=3.0)
+    assert not refreshed  # waits for a quiet moment
+    panel._watch_panorama(now=3.5)
+    assert not refreshed
+    panel._watch_panorama(now=4.0)
+    assert refreshed == [True]  # quiet for a second: refreshed once
+    panel._watch_panorama(now=5.0)
+    assert refreshed == [True]
+
+    panel.live_thumbnail.setChecked(False)
+    assert not panel._watch_timer.isActive()
