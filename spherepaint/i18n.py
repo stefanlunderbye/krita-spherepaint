@@ -100,14 +100,13 @@ SV = {
     "Left": "Vänster",
     "Up": "Upp",
     "Down": "Ner",
-    "Creates/updates an undistorted perspective view of the active layer":
-        "Skapar/uppdaterar en odistorterad perspektivvy av det aktiva lagret",
-    "Transfers what changed in the layer '{layer}' to the equirectangular image":
-        "För över det som ändrats i lagret '{layer}' till equirect-bilden",
+    "Creates/updates an undistorted perspective view of the image, with all its paint layers":
+        "Skapar/uppdaterar en odistorterad perspektivvy av bilden, med alla dess målarlager",
+    "Transfers what changed in the view's layers to the same layers of the equirectangular image":
+        "För över det som ändrats i vyns lager till samma lager i equirect-bilden",
     "Undo last write-back": "Ångra senaste tillbakaskrivning",
-    "Open an equirectangular image (2:1) and select the layer you want to paint on.":
-        "Öppna en equirect-bild (2:1) och välj lagret du vill måla på.",
-    "Paint here": "Måla här",
+    "Open an equirectangular image (2:1) and press 'Project'.":
+        "Öppna en equirect-bild (2:1) och tryck 'Projicera'.",
     "Reference (whole image)": "Referens (hela bilden)",
     "Sphere view – {name}": "Sfärvy – {name}",
     "untitled": "namnlös",
@@ -116,29 +115,22 @@ SV = {
     "Otherwise they are discarded.":
         "Vyn har ändringar som inte skrivits tillbaka. Skriva tillbaka dem först? "
         "Annars kastas de.",
-    "Select a regular paint layer in the equirectangular image.":
-        "Välj ett vanligt målarlager (paint layer) i equirect-bilden.",
     "Colour depth {depth} is not supported.": "Färgdjupet {depth} stöds inte.",
     "The image is {w}×{h}, not 2:1. Equirectangular images are usually 2:1. Continue anyway?":
         "Bilden är {w}×{h}, inte 2:1. Equirect-bilder brukar vara 2:1. Fortsätta ändå?",
     "Projecting…": "Projicerar…",
     "Projection failed: {error}": "Projektionen misslyckades: {error}",
     "View {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
-    "Paint in the layer '{layer}', then press 'Write back'.":
+    "Paint in any of its layers, then press 'Write back'.":
         "Vy {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
-        "Måla i lagret '{layer}', tryck sedan 'Skriv tillbaka'.",
+        "Måla i valfritt lager, tryck sedan 'Skriv tillbaka'.",
     "No active projection. Press 'Project view' first.":
         "Ingen aktiv projektion. Tryck 'Projicera vy' först.",
     "Writing back…": "Skriver tillbaka…",
-    "Cannot tell which layer to write back. Merge your layers into one layer named '{layer}'.":
-        "Kan inte avgöra vilket lager som ska skrivas tillbaka. Slå ihop lagren till ett lager "
-        "som heter '{layer}'.",
     "Nothing has changed in the view since the last projection.":
         "Inget har ändrats i vyn sedan senaste projektionen.",
     "Write-back failed: {error}": "Tillbakaskrivningen misslyckades: {error}",
     "Done: {count} pixels updated in {layers}.": "Klart: {count} pixlar uppdaterade i {layers}.",
-    "The layer '{layer}' in the panorama is not a paint layer.":
-        "Lagret '{layer}' i panoramat är inget målarlager.",
     "Undo last write-back ({count} available)": "Ångra senaste tillbakaskrivning ({count} tillgängliga)",
     "Undoing…": "Ångrar…",
     "Undo failed: {error}": "Ångra misslyckades: {error}",

@@ -373,9 +373,11 @@ def test_settings_come_back_in_the_next_session(plugin):
 class FakeNode(FakeLayer):
     """A paint layer in a fake document."""
 
-    def __init__(self, name, pixels, doc=None):
+    def __init__(self, name, pixels, doc=None, visible=True):
         super().__init__(pixels)
-        self._name, self.doc, self._locked = name, doc, False
+        self._name, self.doc, self._locked, self._visible = name, doc, False, visible
+        self._opacity, self._blending = 255, "normal"
+        self.parent = None
 
     def name(self):
         return self._name
@@ -387,7 +389,36 @@ class FakeNode(FakeLayer):
         return "paintlayer"
 
     def visible(self):
-        return True
+        return self._visible
+
+    def setVisible(self, on):
+        self._visible = on
+
+    def opacity(self):
+        return self._opacity
+
+    def setOpacity(self, value):
+        self._opacity = value
+
+    def blendingMode(self):
+        return self._blending
+
+    def setBlendingMode(self, mode):
+        self._blending = mode
+
+    def channels(self):
+        return [None] * self.pixels.shape[2]
+
+    def childNodes(self):
+        return []
+
+    def bounds(self):
+        ys, xs = np.nonzero(self.pixels[..., -1])
+        if len(xs) == 0:
+            return types.SimpleNamespace(x=lambda: 0, y=lambda: 0, width=lambda: 0, height=lambda: 0)
+        return types.SimpleNamespace(x=lambda: int(xs.min()), y=lambda: int(ys.min()),
+                                     width=lambda: int(xs.max() - xs.min() + 1),
+                                     height=lambda: int(ys.max() - ys.min() + 1))
 
     def uniqueId(self):
         return id(self)
@@ -399,31 +430,129 @@ class FakeNode(FakeLayer):
         self._locked = locked
 
     def remove(self):
-        self.doc.nodes.remove(self)
+        self.parent.children.remove(self)
+
+    def parentNode(self):
+        return self.parent
+
+
+class FakeGroup:
+    """A group layer (or a document's root) holding fake layers."""
+
+    def __init__(self, name, children=(), visible=True):
+        self._name, self.children, self._visible = name, [], visible
+        self._opacity, self._blending, self._pass_through = 255, "normal", False
+        self.parent = None
+        for child in children:
+            self.addChildNode(child, self.children[-1] if self.children else None)
+
+    def addChildNode(self, child, above):
+        child.parent = self
+        self.children.insert(self.children.index(above) + 1 if above is not None else 0, child)
+
+    def childNodes(self):
+        return list(self.children)
+
+    def name(self):
+        return self._name
+
+    def setName(self, name):
+        self._name = name
+
+    def type(self):
+        return "grouplayer"
+
+    def visible(self):
+        return self._visible
+
+    def setVisible(self, on):
+        self._visible = on
+
+    def opacity(self):
+        return self._opacity
+
+    def setOpacity(self, value):
+        self._opacity = value
+
+    def blendingMode(self):
+        return self._blending
+
+    def setBlendingMode(self, mode):
+        self._blending = mode
+
+    def passThroughMode(self):
+        return self._pass_through
+
+    def setPassThroughMode(self, on):
+        self._pass_through = on
+
+    def uniqueId(self):
+        return id(self)
+
+    def parentNode(self):
+        return self.parent
+
+    def remove(self):
+        self.parent.children.remove(self)
+
+    def walk(self):
+        for child in self.children:
+            yield child
+            if isinstance(child, FakeGroup):
+                yield from child.walk()
+
+
+class FakePlainGroup(FakeGroup):
+    """What Krita's createNode(name, "grouplayer") returns: a Node, without GroupLayer's functions."""
+
+    @property
+    def passThroughMode(self):
+        raise AttributeError("passThroughMode")
+
+    @property
+    def setPassThroughMode(self):
+        raise AttributeError("setPassThroughMode")
 
 
 class FakeDocument:
-    """A document whose merged image is its first layer, enough for SpherePaint's write-back and undo."""
+    """A document whose merged image is its first (bottom) layer, enough for SpherePaint's write-back and undo."""
 
-    def __init__(self, *nodes):
-        self.nodes = list(nodes)
-        for node in nodes:
+    def __init__(self, *nodes, size=None):
+        self.root = FakeGroup("root", nodes)
+        for node in self.root.walk():
             node.doc = self
+        self.size = size or (nodes[0].pixels.shape[1], nodes[0].pixels.shape[0])
+        self.active = None
+
+    @property
+    def nodes(self):
+        """The top-level layers, bottom first."""
+        return self.root.children
 
     def pixelData(self, *args):
         return self.nodes[0].pixelData(*args)
 
     def width(self):
-        return self.nodes[0].width()
+        return self.size[0]
 
     def height(self):
-        return self.nodes[0].height()
+        return self.size[1]
 
     def rootNode(self):
-        return types.SimpleNamespace(uniqueId=lambda: id(self), childNodes=lambda: list(self.nodes))
+        return self.root
 
     def nodeByName(self, name):
-        return next((n for n in self.nodes if n.name() == name), None)
+        return next((n for n in self.root.walk() if n.name() == name), None)
+
+    def createGroupLayer(self, name):
+        return FakeGroup(name)
+
+    def createNode(self, name, kind):
+        if kind == "grouplayer":  # like Krita: a plain node without the group functions
+            return FakePlainGroup(name)
+        node = FakeNode(name, np.zeros((self.size[1], self.size[0], 4), np.uint8))
+        node.doc = self
+        return node
 
     def refreshProjection(self):
         pass
@@ -431,11 +560,14 @@ class FakeDocument:
     def waitForDone(self):
         pass
 
+    def activeNode(self):
+        return self.active
+
     def setActiveNode(self, node):
-        pass
+        self.active = node
 
 
-def undo_setup(plugin, monkeypatch):
+def undo_setup(plugin, monkeypatch, *extra_layers):
     import projection as P
     from test_projection import noise_equirect
 
@@ -443,22 +575,22 @@ def undo_setup(plugin, monkeypatch):
     monkeypatch.setattr(docker, "_commit_pending_strokes", lambda *docs: None)
     eq = noise_equirect()
     layer = FakeNode("Background", eq)
-    panorama = FakeDocument(layer)
+    panorama = FakeDocument(layer, *extra_layers)
     panel = docker.SphereDocker()
     panel._alive = lambda: True
-    panel._open_ids = lambda: {id(panorama)}
+    panel._open_ids = lambda: {panorama.rootNode().uniqueId()}
     panel._refresh_thumbnail = lambda: None
 
     def project(yaw):
+        """Like project(): a mirrored view; returns the view layer mirroring the background."""
         view = P.View(yaw, 0, 90, 300)
-        projected = P.equirect_to_view(layer.pixels, view)
-        paint = FakeNode(docker.PAINT_LAYER, projected)
-        reference = FakeNode(docker.REFERENCE_LAYER, projected)
-        view_doc = FakeDocument(paint, reference)
-        panel.session = docker.Session(panorama, layer, view_doc, paint, view, np.uint8, 4, projected)
-        for step in panel.history.get(id(panorama), []):  # as project() does
-            step["baseline"] = step["extra_baselines"] = None
-        return paint
+        view_doc = FakeDocument(size=(300, 300))
+        links, active = panel._mirror(panorama, view_doc, view, 4, np.uint8, layer.uniqueId())
+        panel.session = docker.Session(panorama, view_doc, view, np.uint8, 4, links)
+        for step in panel.history.get(panorama.rootNode().uniqueId(), []):
+            step["links"] = None
+        view_doc.setActiveNode(active)
+        return active
 
     def paint_and_apply(paint, rows):
         paint.pixels[rows, 100:200] = (0, 0, 255, 255)
@@ -478,7 +610,7 @@ def test_several_write_backs_can_be_undone_one_by_one(plugin, monkeypatch):
 
     panel.undo_apply()
     assert np.array_equal(layer.pixels, after_first)
-    assert [name for name, _, _ in panel._pending_changes()] == [None]  # the second stroke is waiting again
+    assert [change[0].name() for change in panel._pending_changes()] == ["Background"]  # the second stroke waits
     panel.undo_apply()
     assert np.array_equal(layer.pixels, eq)
     assert not panel._undo_steps() and not panel.btn_undo.isEnabled()
@@ -491,12 +623,13 @@ def test_undoing_a_write_back_from_another_view_projects_the_view_again(plugin, 
     import projection as P
     docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
     paint_and_apply(project(0), slice(50, 60))
-    paint = project(40)  # a new view that overlaps the first one
+    project(40)  # a new view that overlaps the first one
     assert not panel._pending_changes()
 
     panel.undo_apply()  # no unapplied changes: no question asked
     assert np.array_equal(layer.pixels, eq)
-    assert np.array_equal(paint.pixels, P.equirect_to_view(eq, panel.session.view))  # the stroke is gone from the view
+    mirrored = panel.session.view_doc.nodeByName("Background")  # the view was rebuilt
+    assert np.array_equal(mirrored.pixels, P.equirect_to_view(eq, panel.session.view))  # the stroke is gone
     assert not panel._pending_changes()
 
 
@@ -517,3 +650,140 @@ def test_undo_history_is_limited(plugin, monkeypatch):
     for i in range(docker.UNDO_STEPS + 3):
         paint_and_apply(paint, slice(10 + 20 * i, 15 + 20 * i))
     assert len(panel._undo_steps()) == docker.UNDO_STEPS
+
+
+def test_new_panorama_layers_keep_their_place_in_the_view(plugin, monkeypatch):
+    from test_projection import noise_equirect
+    clouds = FakeNode("Clouds", np.zeros_like(noise_equirect()))
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch, clouds)
+    project(0)
+    panorama = panel.session.src_doc
+    view_doc = panel.session.view_doc
+    background = view_doc.nodeByName("Background")
+    trees = view_doc.createNode("Trees", "paintlayer")
+    view_doc.rootNode().addChildNode(trees, background)  # between Background and Clouds
+    trees.pixels[100:150, 100:150] = (0, 255, 0, 255)
+    bushes = view_doc.createNode("Bushes", "paintlayer")
+    view_doc.rootNode().addChildNode(bushes, trees)  # right above Trees, also new
+    bushes.pixels[150:170, 100:150] = (0, 128, 0, 255)
+    birds = view_doc.createNode("Birds", "paintlayer")
+    view_doc.rootNode().addChildNode(birds, view_doc.nodes[-1])  # on top
+    birds.pixels[20:30, 20:30] = (0, 0, 0, 255)
+    sketch = view_doc.createNode("Sketch", "paintlayer")
+    view_doc.rootNode().addChildNode(sketch, birds)
+    sketch.pixels[10:20, 10:20] = 255
+    sketch.setVisible(False)  # a hidden new layer is a sketch: not written back
+    panel.apply()
+    assert [n.name() for n in panorama.nodes] == ["Background", "Trees", "Bushes", "Clouds", "Birds"]
+    assert panorama.nodeByName("Trees").pixels[..., 3].any()  # the painting is in it
+    panel.undo_apply()
+    assert [n.name() for n in panorama.nodes] == ["Background", "Clouds"]
+    pending = [change[0].name() for change in panel._pending_changes()]
+    assert pending == ["Trees", "Bushes", "Birds"]  # new again, waiting
+
+
+def test_view_mirrors_the_panorama_layers(plugin, monkeypatch):
+    from test_projection import noise_equirect
+    size = noise_equirect().shape
+    sky = FakeNode("Sky", np.zeros(size, np.uint8))
+    sky.pixels[200:300] = (200, 150, 100, 255)  # around the horizon, in view
+    sky.setOpacity(128)
+    sky.setBlendingMode("multiply")
+    hidden = FakeNode("Old idea", np.zeros(size, np.uint8), visible=False)
+    in_hidden_group = FakeNode("Grouped", np.zeros(size, np.uint8))
+    group = FakeGroup("Group", [in_hidden_group], visible=False)
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch, sky, hidden, group)
+    paint = project(0)
+    view_doc = panel.session.view_doc
+    names = [n.name() for n in view_doc.nodes]
+    assert names == [docker.REFERENCE_LAYER, "Background", "Sky", "Old idea", "Group"]
+    mirrored_group = view_doc.nodes[-1]
+    assert mirrored_group.type() == "grouplayer" and not mirrored_group.visible()
+    assert [n.name() for n in mirrored_group.childNodes()] == ["Grouped"]
+    reference = view_doc.nodes[0]
+    assert reference.locked() and not reference.visible()
+    mirrored_sky = view_doc.nodeByName("Sky")
+    assert mirrored_sky.opacity() == 128 and mirrored_sky.blendingMode() == "multiply"
+    assert mirrored_sky.pixels[..., 3].any()
+    assert not view_doc.nodeByName("Old idea").visible() and view_doc.nodeByName("Grouped").visible()
+    assert paint is view_doc.nodeByName("Background") and not panel._pending_changes()
+
+
+def test_each_view_layer_writes_to_its_own_panorama_layer(plugin, monkeypatch):
+    """Matched by identity, not by name: two layers may share a name."""
+    from test_projection import noise_equirect
+    size = noise_equirect().shape
+    first, second = FakeNode("Layer", np.zeros(size, np.uint8)), FakeNode("Layer", np.zeros(size, np.uint8))
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch, first, second)
+    project(0)
+    view_layers = [n for n in panel.session.view_doc.nodes if n.name() == "Layer"]
+    view_layers[1].pixels[140:160, 140:160] = (0, 0, 255, 255)  # paint in the upper "Layer"
+    view_layers[1].setName("Renamed in the view")  # renaming doesn't matter either
+    panel.apply()
+    assert not first.pixels[..., 3].any() and second.pixels[..., 3].any()
+    assert np.array_equal(layer.pixels, eq)  # the background untouched
+    assert len(panel.session.src_doc.nodes) == 3  # no new layers
+
+
+def test_a_new_bottom_layer_goes_to_the_bottom(plugin, monkeypatch):
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch)
+    project(0)
+    view_doc = panel.session.view_doc
+    under = view_doc.createNode("Underpainting", "paintlayer")
+    view_doc.rootNode().addChildNode(under, view_doc.nodeByName(docker.REFERENCE_LAYER))
+    under.pixels[100:120, 100:120] = (9, 9, 9, 255)
+    panel.apply()
+    assert [n.name() for n in panel.session.src_doc.nodes] == ["Underpainting", "Background"]
+
+
+def group_setup(plugin, monkeypatch):
+    """A panorama with a group of two layers (one hidden) above the background."""
+    from test_projection import noise_equirect
+    size = noise_equirect().shape
+    rocks, hidden = FakeNode("Rocks", np.zeros(size, np.uint8)), FakeNode("Hidden", np.zeros(size, np.uint8), visible=False)
+    group = FakeGroup("Group", [rocks, hidden])
+    docker, panel, layer, eq, project, paint_and_apply = undo_setup(plugin, monkeypatch, group)
+    project(0)
+    return docker, panel, group, panel.session.src_doc, panel.session.view_doc
+
+
+def test_a_new_top_layer_stays_out_of_the_group_below_it(plugin, monkeypatch):
+    docker, panel, group, panorama, view_doc = group_setup(plugin, monkeypatch)
+    view_group = view_doc.nodeByName("Group")
+    assert [n.name() for n in view_group.childNodes()] == ["Rocks", "Hidden"]
+    assert not view_doc.nodeByName("Hidden").visible() and view_group.visible()
+    top = view_doc.createNode("Top", "paintlayer")
+    view_doc.rootNode().addChildNode(top, view_group)  # on top, outside the group
+    top.pixels[100:120, 100:120] = (1, 2, 3, 255)
+    panel.apply()
+    assert [n.name() for n in panorama.nodes] == ["Background", "Group", "Top"]
+    assert [n.name() for n in group.childNodes()] == ["Rocks", "Hidden"]
+
+
+def test_a_new_layer_inside_a_group_goes_into_that_group(plugin, monkeypatch):
+    docker, panel, group, panorama, view_doc = group_setup(plugin, monkeypatch)
+    view_group = view_doc.nodeByName("Group")
+    inner = view_doc.createNode("Moss", "paintlayer")
+    view_group.addChildNode(inner, view_doc.nodeByName("Rocks"))  # between Rocks and Hidden
+    inner.pixels[100:120, 100:120] = (1, 200, 3, 255)
+    panel.apply()
+    assert [n.name() for n in group.childNodes()] == ["Rocks", "Moss", "Hidden"]
+    assert [n.name() for n in panorama.nodes] == ["Background", "Group"]
+
+
+def test_a_new_group_in_the_view_becomes_a_new_group_in_the_panorama(plugin, monkeypatch):
+    docker, panel, group, panorama, view_doc = group_setup(plugin, monkeypatch)
+    new_group = view_doc.createNode("Signs", "grouplayer")
+    view_doc.rootNode().addChildNode(new_group, view_doc.nodeByName("Background"))  # below Group
+    sign = view_doc.createNode("Sign", "paintlayer")
+    new_group.addChildNode(sign, None)
+    sign.pixels[100:120, 100:120] = (200, 2, 3, 255)
+    panel.apply()
+    assert [n.name() for n in panorama.nodes] == ["Background", "Signs", "Group"]
+    created = panorama.nodeByName("Signs")
+    assert created.type() == "grouplayer" and [n.name() for n in created.childNodes()] == ["Sign"]
+    assert created.childNodes()[0].pixels[..., 3].any()
+    panel.undo_apply()
+    assert [n.name() for n in panorama.nodes] == ["Background", "Group"]
+    panel.apply()  # written back again: the group is created again
+    assert [n.name() for n in panorama.nodes] == ["Background", "Signs", "Group"]

@@ -6,6 +6,11 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- The view mirrors the panorama's layers: every paint layer and group appears in the view with the same name, order, opacity, blending mode and visibility, in the same groups, and *Write back* transfers the changes of every layer you painted in to the layer it mirrors. *Paint here* is gone; the layer that was active in the panorama is active in the view. Layers are matched by identity, so layers with the same name never mix and renaming in the view is fine.
+- A new layer in the view becomes a new panorama layer at the same place – in the same group, above the same neighbour. A new group in the view becomes a new panorama group. Hidden new layers are not written back (sketches).
+- The reference layer (the merged image) is hidden by default; show it to see filter, vector and other layers that can't be mirrored.
+
 ## [0.7.0] – 2026-10-06
 
 ### Added

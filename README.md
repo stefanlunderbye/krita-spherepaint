@@ -34,12 +34,12 @@ Painting directly on an equirectangular (2:1) image is awkward: straight lines b
 - 360° preview window (a floating, resizable docker): drag to look around, scroll to zoom, release to project
 - Yaw, pitch and field of view fields plus quick buttons (front, right, back, left, up, down), remembered per document
 - Projection aspect ratio 1:1, 4:3, 3:2, 16:9, 3:4 or 9:16 (the field of view is horizontal)
-- Projects the active paint layer into a separate view document, with the merged image as a locked reference layer
+- Projects all paint layers into a separate view document that mirrors the panorama's layers and groups (names, order, opacity, blending modes, visibility), with the merged image as a hidden reference layer
 - Writes back only the pixels you changed – the rest of the image is never resampled
 - Fast with very large panoramas (16K and up): only the part the view covers is read, write-back only touches the painted area, and the work is spread over several CPU cores
 - Toggle between the flat equirectangular image and the projection
 - Handles the ±180° seam and the poles; supports 8/16-bit integer and 16/32-bit float colour depths
-- Several layers: extra layers in the view are written back to same-named panorama layers
+- Paint in any layer: write-back transfers the changes of every layer you touched; new layers in the view become new panorama layers at the same place in the stack
 - Cube map export and import (six faces, PNG or EXR)
 - Export for 360° viewers: JPEG with GPano metadata, shown as a panorama on Facebook, Google Photos, Kuula and others
 - Works with Krita 5 (PyQt5) and is prepared for Krita 6 (PyQt6)
@@ -90,9 +90,9 @@ Stable Diffusion, Flux and similar models work best on ordinary perspective imag
 
 ## Usage
 
-1. Open an equirectangular image (2:1) and select the paint layer you want to paint on.
+1. Open an equirectangular image (2:1).
 2. Set yaw, pitch and field of view, then press **Project view**.
-3. A *Sphere view* document opens. Paint in the layer **Paint here**.
+3. A *Sphere view* document opens with the same layers as the panorama. Paint in any of them, or add new ones.
 4. Press **Write back to sphere**. Use **Show flat** / **Show projection** to switch between the two.
 5. Change the direction and project again to work on another part of the sphere.
 

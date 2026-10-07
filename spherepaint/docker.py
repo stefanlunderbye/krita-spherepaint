@@ -1,9 +1,11 @@
 """Docker panel: switches between the equirectangular image (flat) and a perspective view."""
+import hashlib
 import itertools
 import json
 import math
 import os
 import weakref
+import zlib
 
 import numpy as np
 from krita import DockWidget, InfoObject, Krita
@@ -31,8 +33,10 @@ UNDO_STEPS = 10  # write-backs that can be undone, per panorama
 UNDO_BYTES = 1 << 30  # memory the undo history may hold; the oldest steps are dropped first
 SETTINGS_GROUP = "SpherePaint"  # section in Krita's settings file (kritarc)
 ASPECT_RATIOS = (("1:1", 1.0), ("4:3", 4 / 3), ("3:2", 3 / 2), ("16:9", 16 / 9), ("3:4", 3 / 4), ("9:16", 9 / 16))
-PAINT_LAYER = tr("Paint here")
 REFERENCE_LAYER = tr("Reference (whole image)")
+MIRROR_BATCH = 4  # panorama layers projected together: shares the geometry, bounds the memory
+# Channels per colour model, for a panorama without any paint layer to ask.
+CHANNELS = {"RGBA": 4, "GRAYA": 2, "CMYKA": 5, "LABA": 4, "XYZA": 4, "YCbCrA": 4}
 
 
 _DOCKERS = weakref.WeakSet()  # one SpherePaint docker per Krita window
@@ -239,51 +243,104 @@ def _doc_id(doc):
     return root.uniqueId() if root is not None else None
 
 
-def _extra_view_layers(view_doc):
-    """Visible paint layers in the view besides 'Paint here' and the reference.
+def _paint_layers(doc, skip=None):
+    """The paint layers of a document, bottom first, as (node, shown).
 
-    Each is written back to the panorama layer with the same name.
+    Layers inside groups are included; ``shown`` is False when the layer or one of
+    its groups is hidden. A layer named ``skip`` (the view's reference) is left out.
     """
-    return [n for n in view_doc.rootNode().childNodes()
-            if n.type() == "paintlayer" and n.visible()
-            and n.name() not in (PAINT_LAYER, REFERENCE_LAYER)]
+    found = []
+
+    def walk(parent, shown):
+        for child in parent.childNodes():
+            visible = shown and child.visible()
+            if child.type() == "paintlayer" and child.name() != skip:
+                found.append((child, visible))
+            elif child.type() == "grouplayer":
+                walk(child, visible)
+
+    walk(doc.rootNode(), True)
+    return found
 
 
-def _find_paint_node(view_doc):
-    """The layer to write back, looked up fresh each time.
+def _find_node(doc, unique_id):
+    """The node with the given unique id anywhere in the document, or None."""
+    def walk(parent):
+        for child in parent.childNodes():
+            if child.uniqueId() == unique_id:
+                return child
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+    return walk(doc.rootNode())
 
-    Merging layers in Krita replaces the node, so a stored reference goes stale.
-    Prefer the layer named PAINT_LAYER; otherwise, if exactly one paint layer
-    besides the reference exists (e.g. after a merge that kept another name),
-    use it and give it the expected name. Returns None if it is ambiguous.
+
+def _digest(pixels):
+    return hashlib.blake2b(np.ascontiguousarray(pixels), digest_size=16).digest()
+
+
+class Link:
+    """A view layer's panorama layer, and what the view layer looked like when projected or last written back.
+
+    Only changes against that state are written back. It is kept compressed – most
+    layers are largely empty – with a checksum that tells an unchanged layer
+    without unpacking it.
     """
-    candidates = [n for n in view_doc.rootNode().childNodes()
-                  if n.type() == "paintlayer" and n.name() != REFERENCE_LAYER]
-    for node in candidates:
-        if node.name() == PAINT_LAYER:
-            return node
-    if len(candidates) == 1:
-        candidates[0].setName(PAINT_LAYER)
-        return candidates[0]
-    return None
+
+    def __init__(self, src_id, pixels):
+        self.src_id = src_id
+        self.digest = _digest(pixels)
+        self._packed = zlib.compress(np.ascontiguousarray(pixels), 1)
+        self._shape, self._dtype = pixels.shape, pixels.dtype
+
+    def baseline(self):
+        return np.frombuffer(zlib.decompress(self._packed), dtype=self._dtype).reshape(self._shape)
+
+    @property
+    def nbytes(self):
+        return len(self._packed)
+
+
+class GroupLink:
+    """A view group's panorama group; groups hold no pixels, only structure."""
+
+    nbytes = 0
+
+    def __init__(self, src_id):
+        self.src_id = src_id
+
+
+def _copy_look(src, node):
+    """Gives a view layer or group the look of its panorama counterpart."""
+    node.setOpacity(src.opacity())
+    node.setBlendingMode(src.blendingMode())
+    node.setVisible(src.visible())
+    if hasattr(src, "passThroughMode") and hasattr(node, "setPassThroughMode"):
+        node.setPassThroughMode(src.passThroughMode())
+
+
+def _create(doc, name, kind):
+    """A new paint layer or group. Groups need createGroupLayer: createNode gives a plain Node
+    without the group functions."""
+    if kind == "grouplayer":
+        return doc.createGroupLayer(name)
+    return doc.createNode(name, kind)
 
 
 _SESSION_NUMBERS = itertools.count(1)
 
 
 class Session:
-    """An ongoing projection: the source image, the view, and what the view looked like originally."""
+    """An ongoing projection: the panorama, the view, and which view layer mirrors which panorama layer."""
 
-    def __init__(self, src_doc, src_node, view_doc, view_node, view, dtype, channels, baseline):
+    def __init__(self, src_doc, view_doc, view, dtype, channels, links):
         self.src_doc = src_doc
-        self.src_node = src_node
         self.view_doc = view_doc
-        self.view_node = view_node
         self.view = view
         self.dtype = dtype
         self.channels = channels
-        self.baseline = baseline
-        self.extra_baselines = {}  # extra view layer name -> pixels at the last write-back
+        self.links = links  # view layer unique id -> Link
         self.number = next(_SESSION_NUMBERS)  # tells undo steps made from this view apart
 
 
@@ -397,11 +454,11 @@ class SphereDocker(DockWidget):
         # Main actions: large, side by side.
         main = QHBoxLayout()
         self.btn_project = QPushButton(tr("Project"))
-        self.btn_project.setToolTip(tr("Creates/updates an undistorted perspective view of the active layer"))
+        self.btn_project.setToolTip(tr("Creates/updates an undistorted perspective view of the image, with all its paint layers"))
         self.btn_project.clicked.connect(self.project)
         self.btn_apply = QPushButton(tr("Write back"))
         self.btn_apply.setToolTip(
-            tr("Transfers what changed in the layer '{layer}' to the equirectangular image", layer=PAINT_LAYER))
+            tr("Transfers what changed in the view's layers to the same layers of the equirectangular image"))
         self.btn_apply.clicked.connect(self.apply)
         for button, icon in ((self.btn_project, "tool_perspectivegrid"), (self.btn_apply, "merge-layer-below")):
             button.setMinimumHeight(32)
@@ -437,7 +494,7 @@ class SphereDocker(DockWidget):
             button.setFixedHeight(row_height)
         layout.addLayout(secondary)
 
-        self.status = QLabel(tr("Open an equirectangular image (2:1) and select the layer you want to paint on."))
+        self.status = QLabel(tr("Open an equirectangular image (2:1) and press 'Project'."))
         self.status.setWordWrap(True)
         font = self.status.font()
         font.setPointSizeF(max(7.0, font.pointSizeF() * 0.9))
@@ -721,26 +778,73 @@ class SphereDocker(DockWidget):
                     return
         app.activeWindow().addView(doc)
 
-    def _fill_extra_layers(self, doc, node, view_doc, view, w, h, channels, dtype):
-        """Shows each extra view layer's same-named panorama layer from the new direction.
+    def _mirror(self, doc, view_doc, view, channels, dtype, active_src_id=None):
+        """Fills the view with the panorama's paint layers and groups, seen in the view's direction.
 
-        Returns the baselines for write-back: the projected content, so only what the
-        user changes is transferred. Layers without a panorama counterpart start empty.
+        The view's layers are rebuilt with the panorama's structure: every paint layer
+        and group, in the same order and groups, with its name, opacity, blending mode
+        and visibility. Below them lies the locked, hidden reference: the whole merged
+        image, which also shows what can't be mirrored, such as filter or vector layers.
+        Returns the links for write-back and the view layer mirroring ``active_src_id``.
         """
-        baselines = {}
-        width, height = view.width, view.height
-        for layer in _extra_view_layers(view_doc):
-            source = doc.nodeByName(layer.name())
-            if (source is not None and source.type() == "paintlayer"
-                    and source.uniqueId() != node.uniqueId()):
-                region = P.view_region(view, w, h)
-                content = P.equirect_to_view(_read_region(source, region, w, channels, dtype), view,
-                                             (region[0], region[1], w, h))
-                baselines[layer.name()] = content
-            else:
-                content = np.zeros((height, width, channels), dtype=dtype)
-            _write(layer, content, 0, 0)
-        return baselines
+        w, h = doc.width(), doc.height()
+        doc.waitForDone()
+        region = P.view_region(view, w, h)
+        origin = (region[0], region[1], w, h)
+        root = view_doc.rootNode()
+        for child in root.childNodes():
+            if child.name() != REFERENCE_LAYER:
+                child.remove()
+        ref = view_doc.nodeByName(REFERENCE_LAYER)
+        if ref is None:
+            ref = view_doc.createNode(REFERENCE_LAYER, "paintlayer")
+            root.addChildNode(ref, None)
+            ref.setVisible(False)
+
+        mirrors, links, active = [], {}, None
+
+        def build(src_parent, view_parent, above):
+            for src in src_parent.childNodes():
+                kind = src.type()
+                if kind not in ("paintlayer", "grouplayer"):
+                    continue  # filter, fill, vector … layers are only in the reference
+                node = _create(view_doc, src.name(), kind)
+                view_parent.addChildNode(node, above)
+                _copy_look(src, node)
+                above = node
+                if kind == "grouplayer":
+                    links[node.uniqueId()] = GroupLink(src.uniqueId())
+                    build(src, node, None)
+                else:
+                    mirrors.append((node, src))
+
+        build(doc.rootNode(), root, ref)
+        empty = np.zeros((view.height, view.width, channels), dtype=dtype)
+        reference = None
+        for start in range(0, max(1, len(mirrors)), MIRROR_BATCH):
+            batch = mirrors[start:start + MIRROR_BATCH]
+            busy = [(node, src) for node, src in batch if src.bounds().width() > 0]  # empty layers stay empty
+            images = [_read_region(src, region, w, channels, dtype) for _, src in busy]
+            if reference is None:
+                images.append(_read_region(doc, region, w, channels, dtype))
+            projected = P.equirect_to_views(images, view, origin) if images else []
+            if reference is None:
+                reference = projected.pop()
+            contents = dict(zip((id(node) for node, _ in busy), projected))
+            for node, src in batch:
+                content = contents.get(id(node), empty)
+                if content is not empty:
+                    _write(node, content, 0, 0)
+                links[node.uniqueId()] = Link(src.uniqueId(), content)
+                if src.uniqueId() == active_src_id:
+                    active = node
+        ref.setLocked(False)
+        _write(ref, reference, 0, 0)
+        ref.setLocked(True)
+        view_doc.refreshProjection()
+        if active is None and mirrors:
+            active = mirrors[-1][0]
+        return links, active
 
     def toggle_view(self):
         """Switches between the flat equirectangular image and the projection."""
@@ -783,10 +887,14 @@ class SphereDocker(DockWidget):
     def project(self):
         app = Krita.instance()
         doc = app.activeDocument()
-        node = doc.activeNode() if doc else None
+        active_src_id = None
         if self._alive() and _doc_id(doc) == _doc_id(self.session.view_doc):
-            # When the view is active, keep the same source image and layer.
-            doc, node = self.session.src_doc, self.session.src_node
+            # When the view is active, keep the same panorama and the layer mirrored by the active one.
+            link = self.session.links.get(doc.activeNode().uniqueId()) if doc.activeNode() else None
+            active_src_id = link.src_id if link else None
+            doc = self.session.src_doc
+        elif doc is not None and doc.activeNode() is not None:
+            active_src_id = doc.activeNode().uniqueId()
         if doc is None:
             self._fail(tr("No image is open."))
             return
@@ -804,9 +912,6 @@ class SphereDocker(DockWidget):
                 if answer == YES:
                     self.apply()
 
-        if node is None or node.type() != "paintlayer":
-            self._fail(tr("Select a regular paint layer in the equirectangular image."))
-            return
         dtype = DTYPES.get(doc.colorDepth())
         if dtype is None:
             self._fail(tr("Colour depth {depth} is not supported.", depth=doc.colorDepth()))
@@ -826,74 +931,42 @@ class SphereDocker(DockWidget):
             self.view_size.setValue(size)
         height = P.view_height(size, self.aspect)
         view = P.View(self.yaw.value(), self.pitch.value(), fov, size, height)
-        channels = len(node.channels())
+        layers = _paint_layers(doc)
+        channels = len(layers[0][0].channels()) if layers else CHANNELS.get(doc.colorModel(), 4)
 
         self._busy(tr("Projecting…"))
         try:
-            # Only read the part of the panorama the view covers, and project the layer and
-            # the merged image together so the view's geometry is computed once.
-            region = P.view_region(view, w, h)
-            layer_px = _read_region(node, region, w, channels, dtype)
-            merged = _read_region(doc, region, w, channels, dtype)
-            projected, reference = P.equirect_to_views([layer_px, merged], view, (region[0], region[1], w, h))
-            del layer_px, merged
-
             previous = self.session if self._alive() else None
             same_source = previous is not None and _doc_id(doc) == _doc_id(previous.src_doc)
             reuse = (same_source and previous.view_doc.width() == size
                      and previous.view_doc.height() == height)
             if reuse:
-                view_doc = self.session.view_doc
-                view_node = _find_paint_node(view_doc)
-                if view_node is None:
-                    view_node = view_doc.createNode(PAINT_LAYER, "paintlayer")
-                    view_doc.rootNode().addChildNode(view_node, None)
-                ref_node = view_doc.nodeByName(REFERENCE_LAYER)
+                view_doc = previous.view_doc
             else:
                 view_doc = app.createDocument(size, height, tr("Sphere view – {name}", name=doc.name() or tr("untitled")),
                                               doc.colorModel(), doc.colorDepth(), doc.colorProfile(),
                                               doc.resolution())
-                root = view_doc.rootNode()
-                for child in root.childNodes():
-                    root.removeChildNode(child)
-                ref_node = view_doc.createNode(REFERENCE_LAYER, "paintlayer")
-                view_node = view_doc.createNode(PAINT_LAYER, "paintlayer")
-                root.addChildNode(ref_node, None)
-                root.addChildNode(view_node, ref_node)
-                # Recreate the previous view's extra layers so their names carry over.
-                above = view_node
-                for name in ([l.name() for l in _extra_view_layers(previous.view_doc)] if previous else []):
-                    extra = view_doc.createNode(name, "paintlayer")
-                    root.addChildNode(extra, above)
-                    above = extra
-            if ref_node is not None:
-                ref_node.setLocked(False)
-                _write(ref_node, reference, 0, 0)
-                ref_node.setLocked(True)
-            _write(view_node, projected, 0, 0)
-            extra_baselines = self._fill_extra_layers(doc, node, view_doc, view, w, h, channels, dtype)
-            view_doc.refreshProjection()
+            links, active = self._mirror(doc, view_doc, view, channels, dtype, active_src_id)
 
-            self.session = Session(doc, node, view_doc, view_node, view, dtype, channels, projected)
-            self.session.extra_baselines = extra_baselines
+            self.session = Session(doc, view_doc, view, dtype, channels, links)
             for step in self.history.get(_doc_id(doc), []):
-                step["baseline"] = step["extra_baselines"] = None  # only meaningful for their own view
+                step["links"] = None  # only meaningful for their own view
             if not reuse:
                 app.activeWindow().addView(view_doc)
                 if previous is not None:
                     self._close_view(previous.view_doc)  # keep a single projection open
             else:
                 self._show(view_doc)
-            view_doc.setActiveNode(view_node)
+            if active is not None:
+                view_doc.setActiveNode(active)
         except Exception as e:  # show the error in the panel instead of crashing Krita
             self._fail(tr("Projection failed: {error}", error=e))
             return
         self._save_direction(doc)
         self._last_source_id = _doc_id(doc)
         self._done(tr("View {width}×{height} px, yaw {yaw:.0f}°, pitch {pitch:.0f}°, FOV {fov:.0f}°. "
-                      "Paint in the layer '{layer}', then press 'Write back'.",
-                      width=size, height=height, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov,
-                      layer=PAINT_LAYER),
+                      "Paint in any of its layers, then press 'Write back'.",
+                      width=size, height=height, yaw=self.yaw.value(), pitch=self.pitch.value(), fov=fov),
                    [])  # projecting leaves the panorama unchanged
 
     # --- guide layer --------------------------------------------------------
@@ -1066,30 +1139,25 @@ class SphereDocker(DockWidget):
 
     # --- write back ---------------------------------------------------------
 
-    def _current_view_pixels(self):
-        s = self.session
-        node = _find_paint_node(s.view_doc)
-        if node is None:
-            raise LookupError(tr("Cannot tell which layer to write back. Merge your layers into one "
-                                 "layer named '{layer}'.", layer=PAINT_LAYER))
-        s.view_node = node
-        return _read(node, 0, 0, s.view.width, s.view.height, s.channels, s.dtype)
-
     def _pending_changes(self):
-        """What would be written back: [(view layer name or None for 'Paint here', pixels, mask)]."""
+        """What would be written back: [(view layer, its Link or None for a new layer, pixels, mask)].
+
+        A new layer counts only while it is visible – hidden new layers are sketches.
+        """
         s = self.session
         width, height = s.view.width, s.view.height
-        painted = self._current_view_pixels()
         pending = []
-        mask = P.change_mask(s.baseline, painted)
-        if mask.any():
-            pending.append((None, painted, mask))
-        for layer in _extra_view_layers(s.view_doc):
-            pixels = _read(layer, 0, 0, width, height, s.channels, s.dtype)
-            base = s.extra_baselines.get(layer.name())
-            mask = P.change_mask(np.zeros_like(pixels) if base is None else base, pixels)
+        for node, shown in _paint_layers(s.view_doc, skip=REFERENCE_LAYER):
+            link = s.links.get(node.uniqueId())
+            if link is None and not shown:
+                continue
+            pixels = _read(node, 0, 0, width, height, s.channels, s.dtype)
+            if link is not None and _digest(pixels) == link.digest:
+                continue  # untouched
+            before = link.baseline() if link is not None else np.zeros_like(pixels)
+            mask = P.change_mask(before, pixels)
             if mask.any():
-                pending.append((layer.name(), pixels, mask))
+                pending.append((node, link, pixels, mask))
         return pending
 
     def _has_unapplied_changes(self):
@@ -1112,47 +1180,76 @@ class SphereDocker(DockWidget):
             if not pending:
                 self._done(tr("Nothing has changed in the view since the last projection."))
                 return
-            # Resolve every target layer before touching any pixels.
+            # Resolve every target layer before touching any pixels. A new view layer, or one
+            # whose panorama layer has been deleted, gets a new panorama layer (see _place).
             targets = []
-            for name, pixels, mask in pending:
-                if name is None:
-                    targets.append((s.src_node, False))
-                    continue
-                existing = s.src_doc.nodeByName(name)
-                if existing is not None and existing.type() != "paintlayer":
-                    raise LookupError(tr("The layer '{layer}' in the panorama is not a paint layer.", layer=name))
-                targets.append((existing, False) if existing is not None else (None, True))
+            for node, link, pixels, mask in pending:
+                target = _find_node(s.src_doc, link.src_id) if link is not None else None
+                if target is not None and target.type() != "paintlayer":
+                    target = None
+                targets.append(target)
 
             refresh = None  # the part of the view whose reference can change
             margin = _reference_margin(s.view, s.src_doc.width())
-            for _, _, mask in pending:
+            for _, _, _, mask in pending:
                 refresh = _union(_changed_rect(mask, s.view, margin), refresh)
-            undo = {"pixels": [], "created": [], "session": s.number, "baseline": s.baseline,
-                    "extra_baselines": dict(s.extra_baselines), "refresh": refresh}
+            undo = {"pixels": [], "created": [], "session": s.number, "refresh": refresh,
+                    "links": {node.uniqueId(): link for node, link, _, _ in pending}}
             touched = []
             changed = 0
-            for (name, pixels, mask), (target, create) in zip(pending, targets):
-                if create:
-                    target = s.src_doc.createNode(name, "paintlayer")
-                    s.src_node.parentNode().addChildNode(target, s.src_node)  # just above the source layer
-                    undo["created"].append(target)
+            for (node, link, pixels, mask), target in zip(pending, targets):
+                if target is None:
+                    target = s.src_doc.createNode(node.name(), "paintlayer")
+                    self._place(target, node, undo["created"], undo["links"])
                 changed += self._write_layer_back(target, pixels, mask, undo["pixels"])
                 touched.append(target.name())
-                if name is None:
-                    s.baseline = pixels
-                else:
-                    s.extra_baselines[name] = pixels
+                s.links[node.uniqueId()] = Link(target.uniqueId(), pixels)
             s.src_doc.refreshProjection()
-            s.src_doc.setActiveNode(s.src_node)
             self._push_undo(undo)
             self._refresh_reference(refresh)
         except Exception as e:
             self._fail(tr("Write-back failed: {error}", error=e))
             return
         self._done(tr("Done: {count} pixels updated in {layers}.",
-                      count=f"{changed:,}".replace(",", " "),
+                      count=f"{changed:,}".replace(",", " "),
                       layers=", ".join(f"'{t}'" for t in touched)),
                    _changed_boxes(undo["pixels"], s.src_doc.width()))
+
+    def _panorama_parent(self, view_parent, created, undo_links):
+        """The panorama group (or root) matching a view group, created when the group is new."""
+        s = self.session
+        if view_parent.uniqueId() == s.view_doc.rootNode().uniqueId():
+            return s.src_doc.rootNode()
+        link = s.links.get(view_parent.uniqueId())
+        group = _find_node(s.src_doc, link.src_id) if link is not None else None
+        if group is None:
+            group = _create(s.src_doc, view_parent.name(), "grouplayer")
+            self._place(group, view_parent, created, undo_links)
+            undo_links.setdefault(view_parent.uniqueId(), link)
+            s.links[view_parent.uniqueId()] = GroupLink(group.uniqueId())
+        return group
+
+    def _place(self, target, view_node, created, undo_links):
+        """Puts a new panorama layer or group where its view counterpart is: in the matching
+        group, just above the panorama counterpart of the nearest layer below it there, or at
+        the bottom of that group. New groups in the view become new panorama groups.
+
+        The pending changes are handled bottom first, so new layers created in one
+        write-back stack up in the view's order.
+        """
+        s = self.session
+        view_parent = view_node.parentNode()
+        parent = self._panorama_parent(view_parent, created, undo_links)
+        siblings = view_parent.childNodes()
+        position = next(i for i, n in enumerate(siblings) if n.uniqueId() == view_node.uniqueId())
+        below = None
+        for sibling in reversed(siblings[:position]):
+            link = s.links.get(sibling.uniqueId())
+            below = _find_node(s.src_doc, link.src_id) if link is not None else None
+            if below is not None:
+                break
+        parent.addChildNode(target, below)
+        created.append(target)
 
     def _refresh_reference(self, rect=None):
         """Re-projects the merged panorama into the view's locked reference layer.
@@ -1216,11 +1313,8 @@ class SphereDocker(DockWidget):
         steps.append(step)
 
         def size(entry):
-            arrays = [old for _, _, _, old in entry["pixels"]]
-            if entry["baseline"] is not None:
-                arrays.append(entry["baseline"])
-                arrays.extend(entry["extra_baselines"].values())
-            return sum(a.nbytes for a in arrays)
+            total = sum(old.nbytes for _, _, _, old in entry["pixels"])
+            return total + sum(link.nbytes for link in (entry["links"] or {}).values() if link is not None)
 
         while len(steps) > 1 and (len(steps) > UNDO_STEPS or sum(size(e) for e in steps) > UNDO_BYTES):
             steps.pop(0)
@@ -1232,7 +1326,7 @@ class SphereDocker(DockWidget):
         s = self.session
         steps = self._undo_steps()
         step = steps[-1]
-        same_view = step["session"] == s.number
+        same_view = step["session"] == s.number and step["links"] is not None
         if not same_view:
             # Made from another view: the open view shows the panorama with that write-back,
             # so it is projected again, which replaces what has been painted there since.
@@ -1249,13 +1343,17 @@ class SphereDocker(DockWidget):
         try:
             for target, r0, c0, old in reversed(step["pixels"]):
                 _write(target, old, c0, r0)
-            for node in step["created"]:
+            for node in reversed(step["created"]):  # layers before the new groups holding them
                 node.remove()
             s.src_doc.refreshProjection()
             if same_view:
-                # The view still contains the painting, so compare against the state before the write-back.
-                s.baseline = step["baseline"]
-                s.extra_baselines = step["extra_baselines"]
+                # The view still contains the painting, so compare against the state before the
+                # write-back; a layer whose panorama layer was just removed counts as new again.
+                for view_id, link in step["links"].items():
+                    if link is None:
+                        s.links.pop(view_id, None)
+                    else:
+                        s.links[view_id] = link
                 self._refresh_reference(step["refresh"])
                 text = tr("Write-back undone in the equirectangular image ({count} more can be undone). "
                           "The view is unchanged – press 'Write back' again to redo it.", count=len(steps))
@@ -1271,26 +1369,9 @@ class SphereDocker(DockWidget):
     def _reproject_session(self):
         """Projects the panorama into the open view again, in the same direction."""
         s = self.session
-        w, h = s.src_doc.width(), s.src_doc.height()
-        s.src_doc.waitForDone()
-        region = P.view_region(s.view, w, h)
-        layer_px = _read_region(s.src_node, region, w, s.channels, s.dtype)
-        merged = _read_region(s.src_doc, region, w, s.channels, s.dtype)
-        projected, reference = P.equirect_to_views([layer_px, merged], s.view, (region[0], region[1], w, h))
-        del layer_px, merged
-        node = _find_paint_node(s.view_doc)
-        if node is None:
-            node = s.view_doc.createNode(PAINT_LAYER, "paintlayer")
-            s.view_doc.rootNode().addChildNode(node, None)
-        s.view_node = node
-        _write(node, projected, 0, 0)
-        ref = s.view_doc.nodeByName(REFERENCE_LAYER)
-        if ref is not None:
-            locked = ref.locked()
-            ref.setLocked(False)
-            _write(ref, reference, 0, 0)
-            ref.setLocked(locked)
-        s.extra_baselines = self._fill_extra_layers(s.src_doc, s.src_node, s.view_doc, s.view, w, h,
-                                                    s.channels, s.dtype)
-        s.baseline = projected
-        s.view_doc.refreshProjection()
+        active = s.view_doc.activeNode()
+        link = s.links.get(active.uniqueId()) if active is not None else None
+        s.links, node = self._mirror(s.src_doc, s.view_doc, s.view, s.channels, s.dtype,
+                                     link.src_id if link else None)
+        if node is not None:
+            s.view_doc.setActiveNode(node)

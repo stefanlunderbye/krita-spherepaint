@@ -10,10 +10,10 @@
 <h2>Getting started</h2>
 <ol>
 <li>Show the panel with <strong>Settings → Dockers → SpherePaint</strong>.</li>
-<li>Open an equirectangular image (width twice the height) and select the paint layer you want to paint on.</li>
+<li>Open an equirectangular image (width twice the height).</li>
 <li>Choose a direction: click or drag in the panorama thumbnail at the top of the panel (scroll to change the field of view), type <strong>Yaw</strong>, <strong>Pitch</strong> and <strong>Field of view</strong>, or use the quick buttons <em>Front, Right, Back, Left, Up, Down</em>. The yellow outline shows the area the view will cover.</li>
 <li>Press <strong>Project</strong> – or just release the mouse in the thumbnail (<em>Project when the mouse is released</em> in the <strong>⋯</strong> menu is on by default). A new document called <em>Sphere view</em> opens.</li>
-<li>Paint in the layer <strong>Paint here</strong>. The locked layer below shows the whole image for reference.</li>
+<li>The view has the same paint layers as the panorama, in the same order – paint in any of them, or add new ones. The layer that was active in the panorama is active in the view.</li>
 <li>Press <strong>Write back</strong>. Only the pixels you changed are transferred; the rest of the image is untouched.</li>
 <li>Use <strong>Flat / Projection</strong> to switch between the two documents. Change the direction and press <strong>Project</strong> again to work on another part of the sphere.</li>
 </ol>
@@ -32,8 +32,10 @@
 <p>The panel's own settings – field of view, aspect ratio, <em>Project when the mouse is released</em>, <em>Automatic view size</em> and the view size – are saved in Krita's settings and come back the next time you start Krita.</p>
 
 <h2>Several layers</h2>
-<p><strong>Paint here</strong> is written back to the layer you projected. You can also add more paint layers to the view, for example <em>Trees</em> or <em>Sign</em>: each visible one is written back to the panorama layer with the same name, which is created above the projected layer if it does not exist. Only what you change is transferred.</p>
-<p>When you project, each extra layer shows what its same-named panorama layer already contains, seen from the new direction – so <em>Trees</em> in the view shows the trees you painted before, and you can add to them, erase or repaint. The layers carry over to every new direction. A layer you add to the view after projecting starts empty; press <strong>Project</strong> again to load its existing content. <strong>Undo last write-back</strong> covers all affected layers and removes layers it created.</p>
+<p>The view mirrors the panorama's layers: every paint layer and group of the panorama appears in the view with the same name, order, opacity, blending mode and visibility, in the same groups, showing its content from the view's direction. <strong>Write back</strong> transfers what changed in each view layer to the panorama layer it mirrors – only what you changed, in every layer you touched.</p>
+<p>The layers are matched by identity, not by name, so two layers with the same name never mix and you can rename layers in the view. A new layer you add to the view, for example <em>Trees</em>, becomes a new panorama layer at the same place: in the same group, just above the layer or group that lies below it in the view. A new group in the view becomes a new group in the panorama. A new layer that is <em>hidden</em> is not written back – use it for sketches.</p>
+<p>At the bottom of the view lies the locked, hidden <em>Reference (whole image)</em>: the panorama's merged image. Show it to compare, or to see what can't be mirrored as paint layers, such as filter, fill or vector layers and group effects.</p>
+<p>Projecting takes about a second or two per layer for an ordinary view; layers that are empty cost almost nothing. <strong>Undo</strong> covers all layers a write-back changed and removes the layers it created. Merging layers in the view makes a new layer, which is written back as a new panorama layer – merge in the panorama instead.</p>
 
 <h2>Working with AI image generation</h2>
 <p>Image generators such as Stable Diffusion or Flux work best on ordinary perspective images. A <em>Sphere view</em> is a normal Krita document, so tools like the <em>Krita AI Diffusion</em> plugin can be used in it like on any image – and SpherePaint writes the result back onto the sphere.</p>
@@ -43,7 +45,7 @@
 <li><strong>Fix the seam:</strong> press <strong>Back</strong> – the left/right seam is then in the middle of the view. Inpaint across it and write back.</li>
 <li><strong>Add details anywhere:</strong> select an area in any view and inpaint or generate there; the model sees a normal perspective image.</li>
 </ol>
-<p>Generating directly into an extra layer in the view (e.g. <em>AI</em>) keeps the result on its own panorama layer after write-back.</p>
+<p>Generating into a new layer in the view (e.g. <em>AI</em>) keeps the result on its own panorama layer after write-back.</p>
 
 <h2>Sharing as a 360° image</h2>
 <p><strong>⋯ → Export for 360° viewers…</strong> saves the panorama (all visible layers) as a JPEG and adds Google Photo Sphere (GPano) metadata. Facebook, Google Photos, Kuula and most 360° viewers use it to show the image as an interactive panorama instead of a flat picture. Hide the guide layer before exporting if you don't want it in the image.</p>
@@ -75,7 +77,8 @@
 <h2>Limitations</h2>
 <ul>
 <li>Write-back is not part of Krita's undo history. Use <strong>Undo</strong> in the panel instead, or save before larger changes.</li>
-<li>Hidden layers in the view are not written back – use them for sketches.</li>
+<li>New layers that are hidden in the view are not written back – use them for sketches.</li>
+<li>Only paint layers can be painted in the view. Filter, fill, vector and file layers and masks are visible only in the reference layer.</li>
 <li>The source must be a regular paint layer. 8/16-bit integer and 16/32-bit float colour depths are supported.</li>
 </ul>
 
