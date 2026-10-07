@@ -6,6 +6,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] – 2026-10-07
+
 ### Added
 - **⋯ → Update the thumbnail and preview while painting in the panorama** (off by default): the thumbnail and the 360° preview follow direct edits of the flat panorama, refreshed once you have stopped painting for a moment.
 
@@ -78,7 +80,8 @@ All notable changes to SpherePaint are documented here. The format is based on
 ### Added
 - First release: docker with yaw, pitch and field of view, projection of the active layer into an undistorted perspective view, write-back of changed pixels only, flat/projection toggle, one-step undo, English and Swedish interface, plugin manual.
 
-[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stefanlunderbye/krita-spherepaint/compare/v0.4.0...v0.5.0
